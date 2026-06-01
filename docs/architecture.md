@@ -44,9 +44,11 @@ The proxy does NOT inspect the `Accept` header — it trusts the `f` param set b
 
 ## Source Identification
 
-The proxy identifies upstream source type via CloudFront origin custom headers (set in Terraform):
+The proxy identifies upstream source type via request headers (injected by the CF Function `imageOptimize` behavior, or set as CloudFront origin custom headers in Terraform):
 - `x-img-source-type: s3` + `x-img-source-bucket: <bucket>` → fetch from S3
-- No such headers → fetch from upstream via istio-ingressgateway
+- any other `x-img-source-type` value **or absent** → fetch via `x-img-upstream-gateway` URL (required; absent → error)
+
+These headers are required for **all** requests — the proxy always resolves the upstream source, even in pass-through mode (when `imwidth`/`f`/`q` params are absent). If neither the CF Function `origin` option nor Terraform origin custom headers supply them, every request will error.
 
 ## No Changes Required
 

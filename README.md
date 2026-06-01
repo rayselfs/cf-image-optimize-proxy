@@ -35,9 +35,9 @@ See [`docs/architecture.md`](docs/architecture.md) for the full CloudFront ↔ p
 
 | Header | Required | Description |
 |---|---|---|
-| `X-Img-Source-Type` | conditional | `s3` → fetch from S3; absent → use upstream gateway |
+| `X-Img-Source-Type` | optional | `s3` → fetch from S3; any other value or absent → use upstream gateway |
 | `X-Img-Source-Bucket` | when `s3` | S3 bucket containing the source image |
-| `X-Img-Upstream-Gateway` | when non-s3 | Upstream gateway URL; **required** for non-S3 requests |
+| `X-Img-Upstream-Gateway` | when non-`s3` | Upstream gateway URL; **required** when not using S3 |
 
 ### Query Params (normalized by CloudFront Function)
 
