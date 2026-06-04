@@ -104,7 +104,6 @@ func main() {
 		u.PartSize = multipartThresholdBytes
 	})
 	s3Cache := cache.NewS3CacheWithMultipart(s3Client, cfg.CacheS3Bucket, s3Uploader, multipartThresholdBytes)
-	asyncCache := cache.WrapAsyncPut(s3Cache, cfg.AsyncCachePutTimeout, cfg.AsyncCachePutConcurrency)
 	sharedTransport := httpclient.NewTransport()
 	imgproxyClient := imgproxy.NewClientWithTransport(cfg.ImgproxyURL, cfg.ImgproxyTimeout, sharedTransport)
 	resolver, err := upstream.NewResolverWithEagerPresigner(context.Background(), cfg.UpstreamTimeout, cfg.AllowedUpstreamGateways, cfg.AllowedSourceBuckets, sharedTransport)
@@ -113,7 +112,7 @@ func main() {
 		os.Exit(1)
 	}
 	coalescer := coalesce.New()
-	imageHandler := handler.New(asyncCache, imgproxyClient, resolver, coalescer, cfg.MaxWidth, cfg.DefaultQuality)
+	imageHandler := handler.New(s3Cache, imgproxyClient, resolver, coalescer, cfg.MaxWidth, cfg.DefaultQuality)
 
 	readyClient := &http.Client{Timeout: 2 * time.Second}
 
@@ -147,11 +146,5 @@ func main() {
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		slog.Error("shutdown error", "error", err)
-	}
-
-	if err := asyncCache.WaitContext(shutdownCtx); err != nil {
-		slog.Warn("async cache drain interrupted by shutdown timeout", "error", err)
-	} else {
-		slog.Info("async cache drained")
 	}
 }

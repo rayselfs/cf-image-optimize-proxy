@@ -203,48 +203,6 @@ func TestAllowlistValidation(t *testing.T) {
 	}
 }
 
-func TestAsyncCachePutConcurrencyZeroRejected(t *testing.T) {
-	t.Setenv("CACHE_S3_BUCKET", "test-bucket")
-	t.Setenv("ASYNC_CACHE_PUT_CONCURRENCY", "0")
-	t.Setenv("ALLOWED_UPSTREAM_GATEWAYS", "upstream.com")
-	t.Setenv("ALLOWED_SOURCE_BUCKETS", "source-bucket")
-
-	_, err := Load()
-	if err == nil {
-		t.Fatal("Load() error = nil, want error for ASYNC_CACHE_PUT_CONCURRENCY=0")
-	}
-}
-
-func TestAsyncCachePutTimeoutZeroRejected(t *testing.T) {
-	t.Setenv("CACHE_S3_BUCKET", "test-bucket")
-	t.Setenv("ASYNC_CACHE_PUT_TIMEOUT_SECONDS", "0")
-	t.Setenv("ALLOWED_UPSTREAM_GATEWAYS", "upstream.com")
-	t.Setenv("ALLOWED_SOURCE_BUCKETS", "source-bucket")
-
-	_, err := Load()
-	if err == nil {
-		t.Fatal("Load() error = nil, want error for ASYNC_CACHE_PUT_TIMEOUT_SECONDS=0")
-	}
-}
-
-func TestAsyncCachePutCustomValues(t *testing.T) {
-	t.Setenv("CACHE_S3_BUCKET", "test-bucket")
-	t.Setenv("ASYNC_CACHE_PUT_CONCURRENCY", "8")
-	t.Setenv("ASYNC_CACHE_PUT_TIMEOUT_SECONDS", "60")
-	t.Setenv("ALLOWED_UPSTREAM_GATEWAYS", "upstream.com")
-	t.Setenv("ALLOWED_SOURCE_BUCKETS", "source-bucket")
-
-	cfg, err := Load()
-	if err != nil {
-		t.Fatalf("Load() error = %v", err)
-	}
-	if cfg.AsyncCachePutConcurrency != 8 {
-		t.Fatalf("AsyncCachePutConcurrency = %d, want 8", cfg.AsyncCachePutConcurrency)
-	}
-	if cfg.AsyncCachePutTimeout != 60*time.Second {
-		t.Fatalf("AsyncCachePutTimeout = %v, want 60s", cfg.AsyncCachePutTimeout)
-	}
-}
 
 func TestLoadInvalidSettings(t *testing.T) {
 	tests := []struct {
@@ -264,11 +222,6 @@ func TestLoadInvalidSettings(t *testing.T) {
 		{"IMGPROXY_TIMEOUT=0", "IMGPROXY_TIMEOUT", "0"},
 		// SHUTDOWN_TIMEOUT invalid values
 		{"SHUTDOWN_TIMEOUT=0", "SHUTDOWN_TIMEOUT", "0"},
-		// ASYNC_CACHE_PUT_CONCURRENCY invalid values
-		{"ASYNC_CACHE_PUT_CONCURRENCY=0", "ASYNC_CACHE_PUT_CONCURRENCY", "0"},
-		{"ASYNC_CACHE_PUT_CONCURRENCY=-1", "ASYNC_CACHE_PUT_CONCURRENCY", "-1"},
-		// ASYNC_CACHE_PUT_TIMEOUT_SECONDS invalid values
-		{"ASYNC_CACHE_PUT_TIMEOUT_SECONDS=0", "ASYNC_CACHE_PUT_TIMEOUT_SECONDS", "0"},
 	}
 
 	for _, tc := range tests {
@@ -288,22 +241,18 @@ func TestLoadInvalidSettings(t *testing.T) {
 
 func TestLoadValidSettings(t *testing.T) {
 	tests := []struct {
-		name                         string
-		maxWidth                     string
-		upstreamTimeout              string
-		asyncCachePutConcurrency     string
-		wantMaxWidth                 int
-		wantUpstreamTimeout          time.Duration
-		wantAsyncCachePutConcurrency int
+		name                string
+		maxWidth            string
+		upstreamTimeout     string
+		wantMaxWidth        int
+		wantUpstreamTimeout time.Duration
 	}{
 		{
-			name:                         "custom valid values",
-			maxWidth:                     "640",
-			upstreamTimeout:              "10",
-			asyncCachePutConcurrency:     "16",
-			wantMaxWidth:                 640,
-			wantUpstreamTimeout:          10 * time.Second,
-			wantAsyncCachePutConcurrency: 16,
+			name:                "custom valid values",
+			maxWidth:            "640",
+			upstreamTimeout:     "10",
+			wantMaxWidth:        640,
+			wantUpstreamTimeout: 10 * time.Second,
 		},
 	}
 
@@ -314,7 +263,6 @@ func TestLoadValidSettings(t *testing.T) {
 			t.Setenv("ALLOWED_SOURCE_BUCKETS", "source-bucket")
 			t.Setenv("MAX_WIDTH", tc.maxWidth)
 			t.Setenv("UPSTREAM_TIMEOUT", tc.upstreamTimeout)
-			t.Setenv("ASYNC_CACHE_PUT_CONCURRENCY", tc.asyncCachePutConcurrency)
 
 			cfg, err := Load()
 			if err != nil {
@@ -325,9 +273,6 @@ func TestLoadValidSettings(t *testing.T) {
 			}
 			if cfg.UpstreamTimeout != tc.wantUpstreamTimeout {
 				t.Fatalf("UpstreamTimeout = %v, want %v", cfg.UpstreamTimeout, tc.wantUpstreamTimeout)
-			}
-			if cfg.AsyncCachePutConcurrency != tc.wantAsyncCachePutConcurrency {
-				t.Fatalf("AsyncCachePutConcurrency = %d, want %d", cfg.AsyncCachePutConcurrency, tc.wantAsyncCachePutConcurrency)
 			}
 		})
 	}

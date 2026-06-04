@@ -10,34 +10,30 @@ import (
 )
 
 const (
-	defaultListenAddr               = ":9999"
-	defaultImgproxyURL              = "http://localhost:8081"
-	defaultCacheS3Region            = "us-west-2"
-	defaultMaxWidth                 = 1920
-	defaultUpstreamTimeout          = 30 * time.Second
-	defaultImgproxyTimeout          = 30 * time.Second
-	defaultShutdownTimeout          = 25 * time.Second
-	defaultAsyncCachePutConcurrency = 32
-	defaultAsyncCachePutTimeout     = 30 * time.Second
-	defaultQuality                  = 75
+	defaultListenAddr      = ":9999"
+	defaultImgproxyURL     = "http://localhost:8081"
+	defaultCacheS3Region   = "us-west-2"
+	defaultMaxWidth        = 1920
+	defaultUpstreamTimeout = 30 * time.Second
+	defaultImgproxyTimeout = 30 * time.Second
+	defaultShutdownTimeout = 25 * time.Second
+	defaultQuality         = 75
 )
 
 // Config holds the service configuration loaded from environment variables.
 type Config struct {
-	ListenAddr               string
-	ImgproxyURL              string
-	CacheS3Bucket            string
-	CacheS3Region            string
-	MaxWidth                 int
-	UpstreamTimeout          time.Duration
-	ImgproxyTimeout          time.Duration
-	ShutdownTimeout          time.Duration
-	AsyncCachePutConcurrency int
-	AsyncCachePutTimeout     time.Duration
-	OriginSecrets            []string
-	AllowedUpstreamGateways  []string
-	AllowedSourceBuckets     []string
-	DefaultQuality           int
+	ListenAddr              string
+	ImgproxyURL             string
+	CacheS3Bucket           string
+	CacheS3Region           string
+	MaxWidth                int
+	UpstreamTimeout         time.Duration
+	ImgproxyTimeout         time.Duration
+	ShutdownTimeout         time.Duration
+	OriginSecrets           []string
+	AllowedUpstreamGateways []string
+	AllowedSourceBuckets    []string
+	DefaultQuality          int
 }
 
 // Load reads service configuration from environment variables.
@@ -62,16 +58,6 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 
-	asyncCachePutConcurrency, err := loadPositiveInt("ASYNC_CACHE_PUT_CONCURRENCY", defaultAsyncCachePutConcurrency)
-	if err != nil {
-		return nil, err
-	}
-
-	asyncCachePutTimeout, err := loadDurationSeconds("ASYNC_CACHE_PUT_TIMEOUT_SECONDS", defaultAsyncCachePutTimeout)
-	if err != nil {
-		return nil, err
-	}
-
 	defaultQualityVal, err := loadPositiveInt("DEFAULT_QUALITY", defaultQuality)
 	if err != nil {
 		return nil, err
@@ -85,10 +71,8 @@ func Load() (*Config, error) {
 		MaxWidth:                 maxWidth,
 		UpstreamTimeout:          upstreamTimeout,
 		ImgproxyTimeout:          imgproxyTimeout,
-		ShutdownTimeout:          shutdownTimeout,
-		AsyncCachePutConcurrency: asyncCachePutConcurrency,
-		AsyncCachePutTimeout:     asyncCachePutTimeout,
-		OriginSecrets:            loadCSV("CF_ORIGIN_SECRET"),
+		ShutdownTimeout:         shutdownTimeout,
+		OriginSecrets:           loadCSV("CF_ORIGIN_SECRET"),
 		AllowedUpstreamGateways:  loadCSV("ALLOWED_UPSTREAM_GATEWAYS"),
 		AllowedSourceBuckets:     loadCSV("ALLOWED_SOURCE_BUCKETS"),
 		DefaultQuality:           defaultQualityVal,
