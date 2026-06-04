@@ -20,10 +20,10 @@ func keyHash(key string) string {
 	return fmt.Sprintf("%x", sum[:6]) // 6 bytes = 12 hex chars
 }
 
-// AsyncPutCache wraps a Cache and executes Put operations in background goroutines.
+// AsyncPutCache wraps a FileCache and executes Put operations in background goroutines.
 // Use Wait to drain in-flight puts during graceful shutdown.
 type AsyncPutCache struct {
-	inner   Cache
+	inner   FileCache
 	timeout time.Duration
 	sem     chan struct{}
 	wg      sync.WaitGroup
@@ -31,7 +31,7 @@ type AsyncPutCache struct {
 
 // WrapAsyncPut wraps c so that Put is executed in a background goroutine.
 // Concurrency is capped at maxConcurrency; excess puts are dropped and logged.
-func WrapAsyncPut(c Cache, timeout time.Duration, maxConcurrency int) *AsyncPutCache {
+func WrapAsyncPut(c FileCache, timeout time.Duration, maxConcurrency int) *AsyncPutCache {
 	return &AsyncPutCache{
 		inner:   c,
 		timeout: timeout,
@@ -96,13 +96,7 @@ func (a *AsyncPutCache) PutFile(ctx context.Context, key, filePath, contentType 
 		putCtx, cancel := context.WithTimeout(context.Background(), a.timeout)
 		defer cancel()
 
-		fc, ok := a.inner.(FileCache)
-		if !ok {
-			slog.Error("async cache: inner cache does not support PutFile")
-			metrics.IncPutError()
-			return
-		}
-		if err := fc.PutFile(putCtx, key, filePath, contentType); err != nil {
+		if err := a.inner.PutFile(putCtx, key, filePath, contentType); err != nil {
 			slog.Error("async cache put file failed", "key_hash", keyHash(key), "error", err)
 			metrics.IncPutError()
 		}

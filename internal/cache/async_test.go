@@ -38,6 +38,15 @@ func (s *syncCache) Put(_ context.Context, key string, body io.Reader, contentTy
 	return s.putErr
 }
 
+func (s *syncCache) PutFile(_ context.Context, key, _ string, contentType string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.calls++
+	s.putKey = key
+	s.putCT = contentType
+	return s.putErr
+}
+
 func TestWrapAsyncPutReturnsImmediately(t *testing.T) {
 	inner := &syncCache{}
 	wrapped := WrapAsyncPut(inner, 5*time.Second, 32)
@@ -172,6 +181,15 @@ func (b *blockingInnerCache) Get(ctx context.Context, key string) (io.ReadCloser
 }
 
 func (b *blockingInnerCache) Put(ctx context.Context, key string, body io.Reader, contentType string) error {
+	select {
+	case <-b.block:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (b *blockingInnerCache) PutFile(ctx context.Context, key, _ string, contentType string) error {
 	select {
 	case <-b.block:
 		return nil
