@@ -19,8 +19,6 @@ var (
 	cacheBypasses         prometheus.Counter
 	imgproxyErrors        prometheus.Counter
 	putErrors             prometheus.Counter
-	asyncCachePutInflight prometheus.Gauge
-	asyncCachePutDropped  prometheus.Counter
 
 	httpRequestDuration   *prometheus.HistogramVec
 	imgproxyDuration      *prometheus.HistogramVec
@@ -66,14 +64,6 @@ func initRegistry() {
 		Name: "cache_put_errors_total",
 		Help: "S3 cache write failures",
 	})
-	asyncCachePutInflight = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "async_cache_put_inflight",
-		Help: "Number of async S3 cache puts currently in flight",
-	})
-	asyncCachePutDropped = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "async_cache_put_dropped_total",
-		Help: "Async S3 cache puts dropped due to full semaphore",
-	})
 	httpRequestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    "http_request_duration_seconds",
 		Help:    "HTTP request latency in seconds",
@@ -107,8 +97,6 @@ func initRegistry() {
 		cacheBypasses,
 		imgproxyErrors,
 		putErrors,
-		asyncCachePutInflight,
-		asyncCachePutDropped,
 		httpRequestDuration,
 		imgproxyDuration,
 		s3GetDuration,
@@ -133,15 +121,12 @@ func Registry() *prometheus.Registry {
 	return reg
 }
 
-func IncRequest()               { requestsTotal.Inc() }
-func IncCacheHit()              { cacheHits.Inc() }
-func IncCacheMiss()             { cacheMisses.Inc() }
-func IncCacheBypass()           { cacheBypasses.Inc() }
-func IncImgproxyError()         { imgproxyErrors.Inc() }
-func IncPutError()              { putErrors.Inc() }
-func IncAsyncCachePutInflight() { asyncCachePutInflight.Inc() }
-func DecAsyncCachePutInflight() { asyncCachePutInflight.Dec() }
-func IncAsyncCachePutDropped()  { asyncCachePutDropped.Inc() }
+func IncRequest()       { requestsTotal.Inc() }
+func IncCacheHit()      { cacheHits.Inc() }
+func IncCacheMiss()     { cacheMisses.Inc() }
+func IncCacheBypass()   { cacheBypasses.Inc() }
+func IncImgproxyError() { imgproxyErrors.Inc() }
+func IncPutError()      { putErrors.Inc() }
 
 // Handler returns an HTTP handler that serves Prometheus metrics.
 func Handler() http.Handler {

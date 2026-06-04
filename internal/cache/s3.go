@@ -55,10 +55,9 @@ type s3Uploader interface {
 
 // S3Cache implements Cache backed by an S3 bucket.
 type S3Cache struct {
-	client             S3API
-	bucket             string
-	uploader           s3Uploader
-	multipartThreshold int64
+	client   S3API
+	bucket   string
+	uploader s3Uploader
 }
 
 // NewS3Cache creates a new S3Cache.
@@ -66,14 +65,11 @@ func NewS3Cache(client S3API, bucket string) *S3Cache {
 	return &S3Cache{client: client, bucket: bucket}
 }
 
-// NewS3CacheWithMultipart creates an S3Cache with multipart upload support.
-// Files >= multipartThreshold bytes use manager.Uploader; smaller files use PutObject.
 func NewS3CacheWithMultipart(client S3API, bucket string, uploader s3Uploader, multipartThreshold int64) *S3Cache {
 	return &S3Cache{
-		client:             client,
-		bucket:             bucket,
-		uploader:           uploader,
-		multipartThreshold: multipartThreshold,
+		client:   client,
+		bucket:   bucket,
+		uploader: uploader,
 	}
 }
 

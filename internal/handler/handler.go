@@ -253,7 +253,8 @@ func (h *Handler) processImage(ctx context.Context, urlPath, sourceURL string, f
 		pw.CloseWithError(copyErr)
 	}()
 
-	if err := h.Cache.Put(context.Background(), key, pr, transformedContentType); err != nil {
+	if err := h.Cache.Put(ctx, key, pr, transformedContentType); err != nil {
+		_ = pr.Close() // unblock writer goroutine if Put failed before draining pipe
 		slog.Error("handler: cache put", "key_hash", cacheKeyHash(key), "error", err)
 		return processResult{}, err
 	}
