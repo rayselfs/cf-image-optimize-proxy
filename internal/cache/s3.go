@@ -60,7 +60,11 @@ type S3Cache struct {
 	uploader s3Uploader
 }
 
-// NewS3Cache creates a new S3Cache.
+// NewS3Cache creates a new S3Cache without a multipart uploader.
+// Deprecated: use NewS3CacheWithMultipart. PutObject requires a seekable
+// body to determine Content-Length; passing a non-seekable reader (e.g.
+// io.Pipe) will fail. This constructor is retained for tests that supply
+// seekable bodies.
 func NewS3Cache(client S3API, bucket string) *S3Cache {
 	return &S3Cache{client: client, bucket: bucket}
 }
