@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"errors"
@@ -8,7 +9,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"os"
 	"strings"
 	"sync"
 
@@ -26,14 +26,13 @@ var copyBufPool = sync.Pool{
 	},
 }
 
-// maxBodyBytes is the upper limit for buffering non-transform response bodies
-// (non-image bypass and imgproxy fallback paths). Responses exceeding this
-// limit are rejected with a 502 to prevent OOM on large non-image assets.
+// maxBodyBytes caps memory buffering for transform results and imgproxy fallback bodies.
+// Non-image bypass responses are always streamed and are not subject to this limit.
 const maxBodyBytes int64 = 100 * 1024 * 1024 // 100 MiB
 
 // Handler is the main image optimization HTTP handler.
 type Handler struct {
-	Cache          cache.FileCache
+	Cache          cache.Cache
 	Transformer    imgproxy.Transformer
 	Resolver       upstream.Resolver
 	Coalescer      coalesce.Coalescer
@@ -48,7 +47,7 @@ type processResult struct {
 }
 
 // New creates a new Handler.
-func New(c cache.FileCache, t imgproxy.Transformer, r upstream.Resolver, coal coalesce.Coalescer, maxWidth int, defaultQuality int) *Handler {
+func New(c cache.Cache, t imgproxy.Transformer, r upstream.Resolver, coal coalesce.Coalescer, maxWidth int, defaultQuality int) *Handler {
 	return &Handler{
 		Cache:          c,
 		Transformer:    t,
@@ -86,11 +85,32 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		slog.Error("handler: cache get", "key_hash", cacheKeyHash(key), "error", err)
 	}
 
+	sourceURL, headFunc, fetchFunc, err := h.Resolver.Resolve(r)
+	if err != nil {
+		slog.Error("handler: resolve", "error", err)
+		h.writeError(w, err)
+		return
+	}
+
+	headContentType, headErr := headFunc()
+	if headErr != nil {
+		slog.Error("handler: HEAD upstream failed", "error", headErr, "path", r.URL.Path)
+		h.writeError(w, headErr)
+		return
+	}
+
+	// Non-image content: stream directly without buffering.
+	// Handles arbitrarily large files (video, PDF, ZIP) without OOM risk.
+	if headContentType != "" && !strings.HasPrefix(headContentType, "image/") {
+		h.streamBypass(w, r, fetchFunc, headContentType)
+		return
+	}
+
 	value, err, _ := h.Coalescer.Do(r.Context(), key, func() (interface{}, error) {
-		return h.process(r, key, params)
+		return h.processImage(r.Context(), r.URL.Path, sourceURL, fetchFunc, key, params)
 	})
 	if err != nil {
-		slog.Error("handler: process request", "error", err)
+		slog.Error("handler: process image", "error", err)
 		h.writeError(w, err)
 		return
 	}
@@ -121,6 +141,8 @@ func cacheKeyHash(key string) string {
 	return fmt.Sprintf("%x", sum[:6])
 }
 
+// passThrough streams the request to the upstream without transformation.
+// Used when no image transform params (imwidth/f/q) are present.
 func (h *Handler) passThrough(w http.ResponseWriter, r *http.Request) {
 	_, _, fetchFunc, err := h.Resolver.Resolve(r)
 	if err != nil {
@@ -137,7 +159,6 @@ func (h *Handler) passThrough(w http.ResponseWriter, r *http.Request) {
 	}
 	defer body.Close()
 
-	// Validate content type to prevent header injection.
 	if contentType != "" {
 		if err := validatePassThroughContentType(contentType); err != nil {
 			slog.Error("handler: invalid pass-through content type", "error", err)
@@ -156,111 +177,91 @@ func (h *Handler) passThrough(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *Handler) process(r *http.Request, key string, params *ImageParams) (processResult, error) {
-	sourceURL, headFunc, fetchFunc, err := h.Resolver.Resolve(r)
+// streamBypass streams a non-image response directly to the client using io.CopyBuffer.
+// No upper size limit is applied; content is never fully loaded into memory.
+func (h *Handler) streamBypass(w http.ResponseWriter, r *http.Request, fetchFunc func() (io.ReadCloser, string, error), headContentType string) {
+	body, contentType, err := fetchFunc()
 	if err != nil {
-		return processResult{}, err
+		slog.Error("handler: fetch bypass", "error", err, "path", r.URL.Path)
+		h.writeError(w, err)
+		return
+	}
+	defer body.Close()
+
+	ct := contentType
+	if ct == "" {
+		ct = headContentType
+	}
+	if ct != "" {
+		if err := validatePassThroughContentType(ct); err != nil {
+			slog.Error("handler: invalid bypass content type", "error", err)
+			h.writeError(w, err)
+			return
+		}
+		w.Header().Set("Content-Type", ct)
 	}
 
-	headContentType, headErr := headFunc()
-	if headErr != nil {
-		slog.Error("handler: HEAD upstream failed", "error", headErr, "path", r.URL.Path)
-		return processResult{}, headErr
+	w.Header().Set("X-Cache", "BYPASS")
+	metrics.IncCacheBypass()
+	bufPtr := copyBufPool.Get().(*[]byte)
+	defer copyBufPool.Put(bufPtr)
+	if _, err := io.CopyBuffer(w, body, *bufPtr); err != nil {
+		slog.Error("handler: stream bypass write", "error", err, "path", r.URL.Path)
 	}
+}
 
-	if headContentType != "" && !strings.HasPrefix(headContentType, "image/") {
-		originalBody, originalContentType, err := fetchFunc()
-		if err != nil {
-			return processResult{}, err
-		}
-		defer originalBody.Close()
-		if strings.ContainsAny(originalContentType, "\r\n") {
-			return processResult{}, fmt.Errorf("upstream returned content type with illegal control characters")
-		}
-		originalData, err := h.readBody(originalBody)
-		if err != nil {
-			return processResult{}, err
-		}
-		metrics.IncCacheBypass()
-		return processResult{body: originalData, contentType: originalContentType, cacheStatus: "BYPASS"}, nil
-	}
-
-	transformedBody, transformedContentType, err := h.Transformer.Transform(r.Context(), sourceURL, imgproxy.TransformParams{
+// processImage transforms an image via imgproxy and stores the result in the cache.
+// Called inside the coalescer so concurrent cache-miss requests for the same key
+// share a single transform operation.
+func (h *Handler) processImage(ctx context.Context, urlPath, sourceURL string, fetchFunc func() (io.ReadCloser, string, error), key string, params *ImageParams) (processResult, error) {
+	transformedBody, transformedContentType, err := h.Transformer.Transform(ctx, sourceURL, imgproxy.TransformParams{
 		Width:   params.Width,
 		Format:  params.Format,
 		Quality: params.Quality,
 	})
 	if err != nil {
-		slog.Error("handler: transform failed, fetching original fallback",
-			"error", err,
-			"path", r.URL.Path,
-		)
+		slog.Error("handler: transform failed, fetching original fallback", "error", err, "path", urlPath)
 		metrics.IncImgproxyError()
-		originalBody, originalContentType, fetchErr := fetchFunc()
-		if fetchErr != nil {
-			return processResult{}, fetchErr
-		}
-		defer originalBody.Close()
-		originalData, err := h.readBody(originalBody)
-		if err != nil {
-			return processResult{}, err
-		}
-		metrics.IncCacheMiss()
-		return processResult{body: originalData, contentType: originalContentType, cacheStatus: "MISS"}, nil
+		return h.fetchOriginalFallback(fetchFunc)
 	}
 	defer transformedBody.Close()
 
 	if err := validateTransformedContentType(transformedContentType); err != nil {
-		slog.Error("handler: imgproxy returned invalid content type",
-			"error", err,
-			"path", r.URL.Path,
-		)
+		slog.Error("handler: imgproxy returned invalid content type", "error", err, "path", urlPath)
 		metrics.IncImgproxyError()
-		originalBody, originalContentType, fetchErr := fetchFunc()
-		if fetchErr != nil {
-			return processResult{}, fetchErr
-		}
-		defer originalBody.Close()
-		originalData, err := h.readBody(originalBody)
-		if err != nil {
-			return processResult{}, err
-		}
-		metrics.IncCacheMiss()
-		return processResult{body: originalData, contentType: originalContentType, cacheStatus: "MISS"}, nil
+		return h.fetchOriginalFallback(fetchFunc)
 	}
 
-	tmpFile, err := os.CreateTemp("", "image-optimize-proxy-*")
+	bodyBytes, err := h.readBody(transformedBody)
 	if err != nil {
-		return processResult{}, fmt.Errorf("handler: create temp file: %w", err)
-	}
-	tmpPath := tmpFile.Name()
-
-	bufPtr := copyBufPool.Get().(*[]byte)
-	defer copyBufPool.Put(bufPtr)
-	_, err = io.CopyBuffer(tmpFile, transformedBody, *bufPtr)
-	if closeErr := tmpFile.Close(); err == nil {
-		err = closeErr
+		return processResult{}, fmt.Errorf("handler: read transformed body: %w", err)
 	}
 
-	if err != nil {
-		_ = os.Remove(tmpPath)
-		return processResult{}, fmt.Errorf("handler: write temp file: %w", err)
-	}
-
-	bodyBytes, err := os.ReadFile(tmpPath)
-	if err != nil {
-		_ = os.Remove(tmpPath)
-		return processResult{}, fmt.Errorf("handler: read temp file: %w", err)
-	}
-
-	if err := h.Cache.PutFile(context.Background(), key, tmpPath, transformedContentType); err != nil {
-		slog.Error("handler: cache put file", "key_hash", cacheKeyHash(key), "error", err)
-		_ = os.Remove(tmpPath)
+	if err := h.Cache.Put(context.Background(), key, bytes.NewReader(bodyBytes), transformedContentType); err != nil {
+		slog.Error("handler: cache put", "key_hash", cacheKeyHash(key), "error", err)
 		return processResult{}, err
 	}
 
 	metrics.IncCacheMiss()
 	return processResult{body: bodyBytes, contentType: transformedContentType, cacheStatus: "MISS"}, nil
+}
+
+// fetchOriginalFallback fetches the unmodified upstream image when imgproxy transform fails.
+func (h *Handler) fetchOriginalFallback(fetchFunc func() (io.ReadCloser, string, error)) (processResult, error) {
+	body, contentType, err := fetchFunc()
+	if err != nil {
+		return processResult{}, err
+	}
+	defer body.Close()
+	if strings.ContainsAny(contentType, "\r\n") {
+		return processResult{}, fmt.Errorf("upstream returned content type with illegal control characters")
+	}
+	data, err := h.readBody(body)
+	if err != nil {
+		return processResult{}, err
+	}
+	metrics.IncCacheMiss()
+	return processResult{body: data, contentType: contentType, cacheStatus: "MISS"}, nil
 }
 
 func (h *Handler) readBody(r io.Reader) ([]byte, error) {
