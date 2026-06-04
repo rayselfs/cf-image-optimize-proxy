@@ -77,15 +77,8 @@ func main() {
 	}
 	defer shutdownTracing(context.Background())
 
-	// Startup security warnings.
 	if len(cfg.OriginSecrets) == 0 {
 		slog.Warn("CF_ORIGIN_SECRET is not set; origin verification is disabled")
-	}
-	if len(cfg.AllowedUpstreamGateways) == 0 {
-		slog.Warn("ALLOWED_UPSTREAM_GATEWAYS is not set; any upstream gateway is permitted (set ALLOW_ALL_UPSTREAM_GATEWAYS=true to suppress startup error)")
-	}
-	if len(cfg.AllowedSourceBuckets) == 0 {
-		slog.Warn("ALLOWED_SOURCE_BUCKETS is not set; any S3 source bucket is permitted (set ALLOW_ALL_SOURCE_BUCKETS=true to suppress startup error)")
 	}
 
 	awsCfg, err := awsconfig.LoadDefaultConfig(context.Background(),
