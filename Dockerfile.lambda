@@ -1,0 +1,17 @@
+# Build stage
+FROM golang:1.25-alpine AS builder
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /main ./cmd/server/
+
+# Lambda Web Adapter — translates Lambda invocations to HTTP requests
+FROM public.ecr.aws/awsguru/aws-lambda-adapter:0.9.0 AS lambda-adapter
+
+# Runtime stage
+FROM gcr.io/distroless/static-debian12:nonroot
+COPY --from=lambda-adapter /lambda-adapter /lambda-adapter
+COPY --from=builder /main /main
+EXPOSE 8080
+ENTRYPOINT ["/main"]

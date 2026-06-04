@@ -102,8 +102,39 @@ Minimum IAM policy for the cache bucket:
 > }
 > ```
 
+### Deploying on Kubernetes
+
+Use the standard image. Configure S3 access via IRSA and set the required env vars via a ConfigMap/Secret.
+
+### Deploying on AWS Lambda
+
+Use the Lambda image (`-lambda` suffix). The image bundles [AWS Lambda Web Adapter](https://github.com/awslabs/aws-lambda-web-adapter) which translates Lambda invocations into HTTP requests to the proxy.
+
+**Lambda function configuration:**
+
+| Env var | Value | Notes |
+|---|---|---|
+| `AWS_LAMBDA_EXEC_WRAPPER` | `/lambda-adapter` | Activates Lambda Web Adapter |
+| `AWS_LWA_PORT` | `8080` | Port the adapter forwards to |
+| `AWS_LWA_READINESS_CHECK_PATH` | `/health` | Cold-start health check (avoids probing imgproxy) |
+| `AWS_LWA_INVOKE_MODE` | `response_stream` | Required for large file passthrough |
+| `LISTEN_ADDR` | `:8080` | Must match `AWS_LWA_PORT` |
+| `CACHE_S3_BUCKET` | `<bucket>` | |
+| `IMGPROXY_URL` | `<url>` | |
+| `ALLOWED_UPSTREAM_GATEWAYS` | `<csv>` | |
+| `ALLOWED_SOURCE_BUCKETS` | `<csv>` | |
+
+**Lambda Function URL:**
+- `InvokeMode: RESPONSE_STREAM` — required for streaming large files to CloudFront
+- `AuthType: NONE` — CloudFront origin verification is handled by `CF_ORIGIN_SECRET`
+
+**CloudFront origin:** point directly at the Lambda Function URL. Do not use API Gateway (6 MB response limit).
+
+**IAM:** grant the Lambda execution role `s3:GetObject` + `s3:PutObject` on the cache bucket (same policy as IRSA above).
+
 ### Published artifacts (GitHub)
 
 | Artifact | Registry |
 |---|---|
-| Docker image | `ghcr.io/{owner}/image-optimize-proxy:{tag}` |
+| Docker image (K8s) | `ghcr.io/{owner}/image-optimize-proxy:{tag}` |
+| Docker image (Lambda) | `ghcr.io/{owner}/image-optimize-proxy-lambda:{tag}` |
