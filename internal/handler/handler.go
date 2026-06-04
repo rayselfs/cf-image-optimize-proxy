@@ -26,6 +26,11 @@ var copyBufPool = sync.Pool{
 	},
 }
 
+// maxBodyBytes is the upper limit for buffering non-transform response bodies
+// (non-image bypass and imgproxy fallback paths). Responses exceeding this
+// limit are rejected with a 502 to prevent OOM on large non-image assets.
+const maxBodyBytes int64 = 100 * 1024 * 1024 // 100 MiB
+
 // Handler is the main image optimization HTTP handler.
 type Handler struct {
 	Cache          cache.FileCache
@@ -259,7 +264,15 @@ func (h *Handler) process(r *http.Request, key string, params *ImageParams) (pro
 }
 
 func (h *Handler) readBody(r io.Reader) ([]byte, error) {
-	return io.ReadAll(r)
+	limited := io.LimitReader(r, maxBodyBytes+1)
+	data, err := io.ReadAll(limited)
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > maxBodyBytes {
+		return nil, fmt.Errorf("response body exceeds %d bytes limit", maxBodyBytes)
+	}
+	return data, nil
 }
 
 func (h *Handler) writeResult(w http.ResponseWriter, result processResult) {
