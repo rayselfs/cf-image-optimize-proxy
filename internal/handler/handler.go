@@ -37,10 +37,9 @@ type Handler struct {
 }
 
 type processResult struct {
-	body            []byte
-	contentType     string
-	cacheStatus     string
-	streamFromCache bool
+	body        []byte
+	contentType string
+	cacheStatus string
 }
 
 // New creates a new Handler.
@@ -95,18 +94,6 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		slog.Error("handler: unexpected coalescer result type", "type", fmt.Sprintf("%T", value))
 		h.writeError(w, fmt.Errorf("unexpected coalescer result type: %T", value))
-		return
-	}
-
-	if result.streamFromCache {
-		body, contentType, err := h.Cache.Get(r.Context(), key)
-		if err != nil {
-			slog.Error("handler: cache get after fill", "key_hash", cacheKeyHash(key), "error", err)
-			h.writeError(w, err)
-			return
-		}
-		defer body.Close()
-		h.streamResponse(w, body, contentType, result.cacheStatus)
 		return
 	}
 
@@ -268,7 +255,7 @@ func (h *Handler) process(r *http.Request, key string, params *ImageParams) (pro
 	}
 
 	metrics.IncCacheMiss()
-	return processResult{body: bodyBytes, contentType: transformedContentType, cacheStatus: "MISS", streamFromCache: false}, nil
+	return processResult{body: bodyBytes, contentType: transformedContentType, cacheStatus: "MISS"}, nil
 }
 
 func (h *Handler) readBody(r io.Reader) ([]byte, error) {
