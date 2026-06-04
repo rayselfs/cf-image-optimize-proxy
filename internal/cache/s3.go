@@ -118,18 +118,31 @@ func (c *S3Cache) Put(ctx context.Context, key string, body io.Reader, contentTy
 		span.RecordError(err)
 		return err
 	}
-	start := time.Now()
-	_, err := c.client.PutObject(ctx, &s3.PutObjectInput{
+
+	input := &s3.PutObjectInput{
 		Bucket:       aws.String(c.bucket),
 		Key:          aws.String(key),
 		Body:         body,
 		ContentType:  aws.String(contentType),
 		CacheControl: aws.String("public, max-age=31536000"),
-	})
-	if err != nil {
-		span.RecordError(err)
-		metrics.ObserveS3Put("error", time.Since(start).Seconds())
-		return err
+	}
+
+	start := time.Now()
+	_, seekable := body.(io.Seeker)
+	if c.uploader != nil && !seekable {
+		if _, err := c.uploader.Upload(ctx, input); err != nil {
+			err = fmt.Errorf("cache: multipart upload: %w", err)
+			span.RecordError(err)
+			metrics.ObserveS3Put("error", time.Since(start).Seconds())
+			return err
+		}
+	} else {
+		if _, err := c.client.PutObject(ctx, input); err != nil {
+			err = fmt.Errorf("cache: put object: %w", err)
+			span.RecordError(err)
+			metrics.ObserveS3Put("error", time.Since(start).Seconds())
+			return err
+		}
 	}
 	metrics.ObserveS3Put("success", time.Since(start).Seconds())
 	return nil

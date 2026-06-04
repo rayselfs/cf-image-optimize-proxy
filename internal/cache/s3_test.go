@@ -148,12 +148,35 @@ func (m *mockS3Client) HeadBucket(_ context.Context, _ *s3.HeadBucketInput, _ ..
 }
 
 type mockS3Uploader struct {
-	calls int
-	err   error
+	calls     int
+	err       error
+	lastInput *s3.PutObjectInput
 }
 
-func (m *mockS3Uploader) Upload(_ context.Context, _ *s3.PutObjectInput, _ ...func(*manager.Uploader)) (*manager.UploadOutput, error) {
+func (m *mockS3Uploader) Upload(_ context.Context, input *s3.PutObjectInput, _ ...func(*manager.Uploader)) (*manager.UploadOutput, error) {
 	m.calls++
+	m.lastInput = input
 	return &manager.UploadOutput{}, m.err
+}
+
+func TestS3CachePutStreaming(t *testing.T) {
+	mockUploader := &mockS3Uploader{}
+	c := NewS3CacheWithMultipart(&mockS3Client{}, "bucket", mockUploader, 1)
+
+	pr, pw := io.Pipe()
+	go func() {
+		_, _ = pw.Write([]byte("streamed-data"))
+		pw.Close()
+	}()
+
+	if err := c.Put(context.Background(), "key/stream", pr, "image/webp"); err != nil {
+		t.Fatalf("Put streaming error: %v", err)
+	}
+	if mockUploader.calls != 1 {
+		t.Fatalf("uploader.Upload calls = %d, want 1 (non-seekable reader should use multipart)", mockUploader.calls)
+	}
+	if mockUploader.lastInput == nil || aws.ToString(mockUploader.lastInput.Key) != "key/stream" {
+		t.Errorf("unexpected upload input: %+v", mockUploader.lastInput)
+	}
 }
 
