@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/rayselfs/cloudfront-image-optimize-proxy/internal/cache"
 	"github.com/rayselfs/cloudfront-image-optimize-proxy/internal/coalesce"
@@ -194,7 +195,15 @@ func (h *Handler) passThrough(w http.ResponseWriter, r *http.Request) {
 
 // streamBypass streams a non-image response directly to the client using io.CopyBuffer.
 // No upper size limit is applied; content is never fully loaded into memory.
+// The server WriteTimeout is cleared so arbitrarily large files (e.g. 10 GB video) are
+// not interrupted mid-transfer.
 func (h *Handler) streamBypass(w http.ResponseWriter, r *http.Request, fetchFunc func() (io.ReadCloser, string, error), headContentType string) {
+	// Clear the per-response write deadline; the global WriteTimeout would otherwise
+	// cut off large file transfers (e.g. video) after 60 s.
+	if rc := http.NewResponseController(w); rc != nil {
+		_ = rc.SetWriteDeadline(time.Time{})
+	}
+
 	body, contentType, err := fetchFunc()
 	if err != nil {
 		slog.Error("handler: fetch bypass", "error", err, "path", r.URL.Path)
