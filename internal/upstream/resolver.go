@@ -172,13 +172,13 @@ func (d *DefaultResolver) resolveS3(r *http.Request) (string, func() (string, er
 		}
 	}
 
-	if d.presigner == nil {
-		d.presignerOnce.Do(func() {
+	d.presignerOnce.Do(func() {
+		if d.presigner == nil {
 			d.presigner, d.presignerErr = newS3Presigner(context.Background())
-		})
-		if d.presignerErr != nil {
-			return "", nil, nil, d.presignerErr
 		}
+	})
+	if d.presignerErr != nil {
+		return "", nil, nil, d.presignerErr
 	}
 
 	start := time.Now()
