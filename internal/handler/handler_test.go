@@ -43,8 +43,14 @@ func (m *mockCache) Put(ctx context.Context, key string, body io.Reader, content
 	if err != nil {
 		return err
 	}
+	if m.putErr != nil {
+		return m.putErr
+	}
 	m.putBody = data
-	return m.putErr
+	m.getBody = data
+	m.getContentType = contentType
+	m.getErr = nil
+	return nil
 }
 
 type mockTransformer struct {
@@ -540,7 +546,6 @@ func TestTransformNonImageContentType(t *testing.T) {
 }
 
 func TestCacheGetNonMissError(t *testing.T) {
-	// cache.Get returning a non-ErrNotFound error should log and fall through to fetch.
 	c := &mockCache{getErr: errors.New("s3 read error")}
 	tx := &mockTransformer{body: []byte("transformed"), contentType: "image/webp"}
 	r := &mockResolver{sourceURL: "https://origin/image.png", body: []byte("original"), contentType: "image/png"}
@@ -552,9 +557,8 @@ func TestCacheGetNonMissError(t *testing.T) {
 
 	h.ServeHTTP(w, req)
 
-	// Falls through to fetch+transform, so we get the transformed result.
 	if w.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200 (cache error falls through)", w.Code)
+		t.Fatalf("status = %d, want 200 (initial cache error logs and falls through; put+get succeeds)", w.Code)
 	}
 	if got := w.Body.String(); got != "transformed" {
 		t.Fatalf("body = %q, want transformed", got)

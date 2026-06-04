@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"errors"
@@ -41,7 +40,7 @@ type Handler struct {
 }
 
 type processResult struct {
-	body        []byte
+	body        []byte // non-nil only on fetchOriginalFallback path
 	contentType string
 	cacheStatus string
 }
@@ -122,7 +121,21 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.writeResult(w, result)
+	// Fallback path: body already in memory (imgproxy failed, served original).
+	if result.body != nil {
+		h.writeResult(w, result)
+		return
+	}
+
+	// Success path: image was streamed into S3; read back and forward to client.
+	cached, _, err := h.Cache.Get(r.Context(), key)
+	if err != nil {
+		slog.Error("handler: cache get after put", "key_hash", cacheKeyHash(key), "error", err)
+		h.writeError(w, err)
+		return
+	}
+	defer cached.Close()
+	h.streamResponse(w, cached, result.contentType, result.cacheStatus)
 }
 
 func (h *Handler) streamResponse(w http.ResponseWriter, body io.Reader, contentType, cacheStatus string) {
@@ -232,18 +245,21 @@ func (h *Handler) processImage(ctx context.Context, urlPath, sourceURL string, f
 		return h.fetchOriginalFallback(fetchFunc)
 	}
 
-	bodyBytes, err := h.readBody(transformedBody)
-	if err != nil {
-		return processResult{}, fmt.Errorf("handler: read transformed body: %w", err)
-	}
+	pr, pw := io.Pipe()
+	go func() {
+		bufPtr := copyBufPool.Get().(*[]byte)
+		defer copyBufPool.Put(bufPtr)
+		_, copyErr := io.CopyBuffer(pw, transformedBody, *bufPtr)
+		pw.CloseWithError(copyErr)
+	}()
 
-	if err := h.Cache.Put(context.Background(), key, bytes.NewReader(bodyBytes), transformedContentType); err != nil {
+	if err := h.Cache.Put(context.Background(), key, pr, transformedContentType); err != nil {
 		slog.Error("handler: cache put", "key_hash", cacheKeyHash(key), "error", err)
 		return processResult{}, err
 	}
 
 	metrics.IncCacheMiss()
-	return processResult{body: bodyBytes, contentType: transformedContentType, cacheStatus: "MISS"}, nil
+	return processResult{contentType: transformedContentType, cacheStatus: "MISS"}, nil
 }
 
 // fetchOriginalFallback fetches the unmodified upstream image when imgproxy transform fails.
