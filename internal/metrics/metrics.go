@@ -27,6 +27,8 @@ var (
 	s3GetDuration         *prometheus.HistogramVec
 	s3PutDuration         *prometheus.HistogramVec
 	upstreamFetchDuration *prometheus.HistogramVec
+
+	metricsHandler http.Handler
 )
 
 func init() {
@@ -113,6 +115,8 @@ func initRegistry() {
 		s3PutDuration,
 		upstreamFetchDuration,
 	)
+
+	metricsHandler = promhttp.HandlerFor(reg, promhttp.HandlerOpts{})
 }
 
 // Reset re-creates the registry and all counters. Intended for use in tests only.
@@ -141,12 +145,10 @@ func IncAsyncCachePutDropped()  { asyncCachePutDropped.Inc() }
 
 // Handler returns an HTTP handler that serves Prometheus metrics.
 func Handler() http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		mu.Lock()
-		h := promhttp.HandlerFor(reg, promhttp.HandlerOpts{})
-		mu.Unlock()
-		h.ServeHTTP(w, r)
-	})
+	mu.Lock()
+	h := metricsHandler
+	mu.Unlock()
+	return h
 }
 
 // ObserveHTTPRequest records an HTTP request duration sample.
