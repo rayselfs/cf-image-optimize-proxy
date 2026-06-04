@@ -5,7 +5,6 @@ import (
 	"context"
 	"io"
 	"log/slog"
-	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -38,14 +37,6 @@ func (s *syncCache) Put(_ context.Context, key string, body io.Reader, contentTy
 	return s.putErr
 }
 
-func (s *syncCache) PutFile(_ context.Context, key, _ string, contentType string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.calls++
-	s.putKey = key
-	s.putCT = contentType
-	return s.putErr
-}
 
 func TestWrapAsyncPutReturnsImmediately(t *testing.T) {
 	inner := &syncCache{}
@@ -181,15 +172,6 @@ func (b *blockingInnerCache) Get(ctx context.Context, key string) (io.ReadCloser
 }
 
 func (b *blockingInnerCache) Put(ctx context.Context, key string, body io.Reader, contentType string) error {
-	select {
-	case <-b.block:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-}
-
-func (b *blockingInnerCache) PutFile(ctx context.Context, key, _ string, contentType string) error {
 	select {
 	case <-b.block:
 		return nil
@@ -373,94 +355,3 @@ func TestDroppedCounterIncrements(t *testing.T) {
 	a.Wait()
 }
 
-type fileSyncCache struct {
-	syncCache
-	putFileCalls int
-	putFilePath  string
-}
-
-func (f *fileSyncCache) PutFile(ctx context.Context, key, filePath, contentType string) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.calls++
-	f.putFileCalls++
-	f.putKey = key
-	f.putFilePath = filePath
-	f.putCT = contentType
-	data, _ := os.ReadFile(filePath)
-	f.putData = data
-	return f.putErr
-}
-
-func TestWrapAsyncPutFileReturnsImmediately(t *testing.T) {
-	inner := &fileSyncCache{}
-	wrapped := WrapAsyncPut(inner, 5*time.Second, 32)
-
-	tmpFile, err := os.CreateTemp("", "async-test-*")
-	if err != nil {
-		t.Fatalf("failed to create temp file: %v", err)
-	}
-	tmpPath := tmpFile.Name()
-	_, _ = tmpFile.Write([]byte("file-data"))
-	_ = tmpFile.Close()
-
-	start := time.Now()
-	err = wrapped.PutFile(context.Background(), "key", tmpPath, "image/webp")
-	elapsed := time.Since(start)
-
-	if err != nil {
-		t.Fatalf("PutFile returned error: %v", err)
-	}
-	if elapsed > 500*time.Millisecond {
-		t.Errorf("PutFile took %v, expected near-instant return", elapsed)
-	}
-
-	wrapped.Wait()
-
-	inner.mu.Lock()
-	defer inner.mu.Unlock()
-	if inner.putFileCalls != 1 {
-		t.Fatalf("inner.PutFile calls = %d, want 1", inner.putFileCalls)
-	}
-	if !bytes.Equal(inner.putData, []byte("file-data")) {
-		t.Errorf("data = %q, want file-data", inner.putData)
-	}
-
-	// Temp file should be removed by defer os.Remove in wrapped.PutFile
-	if _, err := os.Stat(tmpPath); !os.IsNotExist(err) {
-		t.Errorf("temp file not deleted: %v", err)
-	}
-}
-
-func TestWrapAsyncPutFileDroppedWhenPoolFull(t *testing.T) {
-	inner := &fileSyncCache{}
-	a := WrapAsyncPut(inner, 5*time.Second, 1)
-
-	// Occupy the slot
-	a.sem <- struct{}{}
-
-	tmpFile, err := os.CreateTemp("", "async-test-*")
-	if err != nil {
-		t.Fatalf("failed to create temp file: %v", err)
-	}
-	tmpPath := tmpFile.Name()
-	_, _ = tmpFile.Write([]byte("file-data"))
-	_ = tmpFile.Close()
-
-	metrics.Reset()
-	err = a.PutFile(context.Background(), "key", tmpPath, "image/webp")
-	if err != nil {
-		t.Fatalf("PutFile error on drop: %v", err)
-	}
-
-	if v := counterValue(t, "async_cache_put_dropped_total"); v != 1 {
-		t.Errorf("dropped counter = %v, want 1", v)
-	}
-
-	// Temp file must be deleted immediately
-	if _, err := os.Stat(tmpPath); !os.IsNotExist(err) {
-		t.Errorf("temp file not deleted on drop: %v", err)
-	}
-
-	<-a.sem
-}

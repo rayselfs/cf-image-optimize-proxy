@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"os"
 	"strings"
 	"testing"
 
@@ -158,48 +157,3 @@ func (m *mockS3Uploader) Upload(_ context.Context, _ *s3.PutObjectInput, _ ...fu
 	return &manager.UploadOutput{}, m.err
 }
 
-func TestS3CachePutFileSmall(t *testing.T) {
-	tmp := t.TempDir()
-	path := tmp + "/small.bin"
-	data := make([]byte, 1024) // 1 KiB
-	if err := os.WriteFile(path, data, 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	mockClient := &mockS3Client{}
-	mockUploader := &mockS3Uploader{}
-	c := NewS3CacheWithMultipart(mockClient, "bucket", mockUploader, 5*1024*1024)
-
-	if err := c.PutFile(context.Background(), "key/small", path, "image/webp"); err != nil {
-		t.Fatalf("PutFile error: %v", err)
-	}
-	if mockClient.putCalls != 1 {
-		t.Fatalf("PutObject calls = %d, want 1 (small file)", mockClient.putCalls)
-	}
-	if mockUploader.calls != 0 {
-		t.Fatalf("Upload calls = %d, want 0 (small file)", mockUploader.calls)
-	}
-	if _, err := os.Stat(path); !os.IsNotExist(err) {
-		t.Fatal("temp file not removed after PutFile")
-	}
-}
-
-func TestS3CachePutFileLarge(t *testing.T) {
-	tmp := t.TempDir()
-	path := tmp + "/large.bin"
-	data := make([]byte, 6*1024*1024) // 6 MiB
-	if err := os.WriteFile(path, data, 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	mockClient := &mockS3Client{}
-	mockUploader := &mockS3Uploader{}
-	c := NewS3CacheWithMultipart(mockClient, "bucket", mockUploader, 5*1024*1024)
-
-	if err := c.PutFile(context.Background(), "key/large", path, "image/avif"); err != nil {
-		t.Fatalf("PutFile error: %v", err)
-	}
-	if _, err := os.Stat(path); !os.IsNotExist(err) {
-		t.Fatal("temp file not removed after PutFile")
-	}
-}

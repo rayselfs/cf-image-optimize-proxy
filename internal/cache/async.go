@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"os"
 	"sync"
 	"time"
 
@@ -20,10 +19,10 @@ func keyHash(key string) string {
 	return fmt.Sprintf("%x", sum[:6]) // 6 bytes = 12 hex chars
 }
 
-// AsyncPutCache wraps a FileCache and executes Put operations in background goroutines.
+// AsyncPutCache wraps a Cache and executes Put operations in background goroutines.
 // Use Wait to drain in-flight puts during graceful shutdown.
 type AsyncPutCache struct {
-	inner   FileCache
+	inner   Cache
 	timeout time.Duration
 	sem     chan struct{}
 	wg      sync.WaitGroup
@@ -31,7 +30,7 @@ type AsyncPutCache struct {
 
 // WrapAsyncPut wraps c so that Put is executed in a background goroutine.
 // Concurrency is capped at maxConcurrency; excess puts are dropped and logged.
-func WrapAsyncPut(c FileCache, timeout time.Duration, maxConcurrency int) *AsyncPutCache {
+func WrapAsyncPut(c Cache, timeout time.Duration, maxConcurrency int) *AsyncPutCache {
 	return &AsyncPutCache{
 		inner:   c,
 		timeout: timeout,
@@ -66,38 +65,6 @@ func (a *AsyncPutCache) Put(_ context.Context, key string, body io.Reader, conte
 		defer cancel()
 		if err := a.inner.Put(putCtx, key, body, contentType); err != nil {
 			slog.Error("async cache put failed", "key_hash", keyHash(key), "error", err)
-			metrics.IncPutError()
-		}
-	}()
-	return nil
-}
-
-// PutFile delegates to the inner FileCache asynchronously.
-// It uses the async worker pool; excess puts are dropped, logged, and the temp file is cleaned up.
-func (a *AsyncPutCache) PutFile(ctx context.Context, key, filePath, contentType string) error {
-	select {
-	case a.sem <- struct{}{}:
-	default:
-		metrics.IncAsyncCachePutDropped()
-		slog.Warn("async cache put file dropped: worker pool full", "key_hash", keyHash(key))
-		metrics.IncPutError()
-		_ = os.Remove(filePath)
-		return nil
-	}
-
-	metrics.IncAsyncCachePutInflight()
-	a.wg.Add(1)
-	go func() {
-		defer a.wg.Done()
-		defer func() { <-a.sem }()
-		defer metrics.DecAsyncCachePutInflight()
-		defer os.Remove(filePath)
-
-		putCtx, cancel := context.WithTimeout(context.Background(), a.timeout)
-		defer cancel()
-
-		if err := a.inner.PutFile(putCtx, key, filePath, contentType); err != nil {
-			slog.Error("async cache put file failed", "key_hash", keyHash(key), "error", err)
 			metrics.IncPutError()
 		}
 	}()

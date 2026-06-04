@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 	"time"
 
@@ -23,14 +22,6 @@ import (
 type Cache interface {
 	Get(ctx context.Context, key string) (io.ReadCloser, string, error)
 	Put(ctx context.Context, key string, body io.Reader, contentType string) error
-}
-
-// FileCache extends Cache with file-based put for efficient large-object uploads.
-// PutFile must complete synchronously so the object is readable from Cache.Get
-// immediately upon return — do not delegate PutFile to an async worker.
-type FileCache interface {
-	Cache
-	PutFile(ctx context.Context, key, filePath, contentType string) error
 }
 
 // ErrNotFound is returned when a cache key does not exist.
@@ -66,8 +57,8 @@ type s3Uploader interface {
 type S3Cache struct {
 	client             S3API
 	bucket             string
-	uploader           s3Uploader // nil if multipart not configured
-	multipartThreshold int64      // bytes; 0 means always use PutObject
+	uploader           s3Uploader
+	multipartThreshold int64
 }
 
 // NewS3Cache creates a new S3Cache.
@@ -86,7 +77,6 @@ func NewS3CacheWithMultipart(client S3API, bucket string, uploader s3Uploader, m
 	}
 }
 
-// Get retrieves a cached object. Returns ErrNotFound if the key does not exist.
 func (c *S3Cache) Get(ctx context.Context, key string) (io.ReadCloser, string, error) {
 	ctx, span := tracing.Tracer().Start(ctx, "s3.cache.get")
 	defer span.End()
@@ -118,7 +108,6 @@ func (c *S3Cache) Get(ctx context.Context, key string) (io.ReadCloser, string, e
 	return out.Body, contentType, nil
 }
 
-// Put stores an object in the cache with a long-lived Cache-Control header.
 func (c *S3Cache) Put(ctx context.Context, key string, body io.Reader, contentType string) error {
 	ctx, span := tracing.Tracer().Start(ctx, "s3.cache.put")
 	defer span.End()
@@ -143,65 +132,5 @@ func (c *S3Cache) Put(ctx context.Context, key string, body io.Reader, contentTy
 		return err
 	}
 	metrics.ObserveS3Put("success", time.Since(start).Seconds())
-	return nil
-}
-
-// PutFile stores a local file in the cache. For files smaller than the
-// multipart threshold (or when multipart is not configured), PutObject is used.
-// For files at or above the threshold, manager.Uploader is used.
-// The file is removed after a successful upload.
-func (c *S3Cache) PutFile(ctx context.Context, key, filePath, contentType string) error {
-	ctx, span := tracing.Tracer().Start(ctx, "s3.cache.put_file")
-	defer span.End()
-
-	if strings.ContainsAny(contentType, "\r\n") {
-		err := fmt.Errorf("cache: content type contains illegal control characters")
-		span.SetStatus(codes.Error, "invalid content type")
-		span.RecordError(err)
-		return err
-	}
-
-	fi, err := os.Stat(filePath)
-	if err != nil {
-		err = fmt.Errorf("cache: stat file: %w", err)
-		span.RecordError(err)
-		return err
-	}
-
-	f, err := os.Open(filePath)
-	if err != nil {
-		err = fmt.Errorf("cache: open file: %w", err)
-		span.RecordError(err)
-		return err
-	}
-	defer f.Close()
-
-	input := &s3.PutObjectInput{
-		Bucket:       aws.String(c.bucket),
-		Key:          aws.String(key),
-		Body:         f,
-		ContentType:  aws.String(contentType),
-		CacheControl: aws.String("public, max-age=31536000"),
-	}
-
-	start := time.Now()
-	if c.uploader != nil && c.multipartThreshold > 0 && fi.Size() >= c.multipartThreshold {
-		if _, err := c.uploader.Upload(ctx, input); err != nil {
-			err = fmt.Errorf("cache: multipart upload: %w", err)
-			span.RecordError(err)
-			metrics.ObserveS3Put("error", time.Since(start).Seconds())
-			return err
-		}
-	} else {
-		if _, err := c.client.PutObject(ctx, input); err != nil {
-			err = fmt.Errorf("cache: put object: %w", err)
-			span.RecordError(err)
-			metrics.ObserveS3Put("error", time.Since(start).Seconds())
-			return err
-		}
-	}
-
-	metrics.ObserveS3Put("success", time.Since(start).Seconds())
-	_ = os.Remove(filePath)
 	return nil
 }

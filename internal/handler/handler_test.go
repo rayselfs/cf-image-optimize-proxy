@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"os"
 	"testing"
 
 	"github.com/rayselfs/cloudfront-image-optimize-proxy/internal/cache"
@@ -45,21 +44,6 @@ func (m *mockCache) Put(ctx context.Context, key string, body io.Reader, content
 		return err
 	}
 	m.putBody = data
-	return m.putErr
-}
-
-func (m *mockCache) PutFile(ctx context.Context, key, filePath, contentType string) error {
-	m.putKey = key
-	m.putContentType = contentType
-	data, err := os.ReadFile(filePath)
-	if err != nil {
-		return err
-	}
-	m.putBody = data
-	m.getBody = data
-	m.getContentType = contentType
-	m.getErr = nil
-	_ = os.Remove(filePath)
 	return m.putErr
 }
 
