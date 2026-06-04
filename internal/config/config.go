@@ -114,23 +114,6 @@ func loadPositiveInt(name string, fallback int) (int, error) {
 	return n, nil
 }
 
-func loadPositiveInt64(name string, fallback int64) (int64, error) {
-	value := strings.TrimSpace(os.Getenv(name))
-	if value == "" {
-		return fallback, nil
-	}
-
-	n, err := strconv.ParseInt(value, 10, 64)
-	if err != nil {
-		return 0, fmt.Errorf("%s must be an integer: %w", name, err)
-	}
-	if n <= 0 {
-		return 0, fmt.Errorf("%s must be greater than zero", name)
-	}
-
-	return n, nil
-}
-
 func loadDurationSeconds(name string, fallback time.Duration) (time.Duration, error) {
 	value := strings.TrimSpace(os.Getenv(name))
 	if value == "" {
@@ -163,12 +146,6 @@ func loadCSV(name string) []string {
 	return out
 }
 
-func loadBool(name string) bool {
-	return strings.ToLower(strings.TrimSpace(os.Getenv(name))) == "true"
-}
-
-// Validate checks that allowlists are configured or explicitly opted out,
-// and validates ImgproxyURL is a valid HTTP URL.
 func (c *Config) Validate() error {
 	if len(c.AllowedUpstreamGateways) == 0 {
 		return fmt.Errorf("ALLOWED_UPSTREAM_GATEWAYS is empty; configuration is required")
