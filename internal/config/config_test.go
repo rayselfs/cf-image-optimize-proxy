@@ -7,7 +7,7 @@ import (
 
 func TestDefaultConfig(t *testing.T) {
 	t.Setenv("LISTEN_ADDR", "")
-	t.Setenv("IMGPROXY_URL", "")
+	t.Setenv("IMGPROXY_URL", "http://imgproxy.example.com")
 	t.Setenv("CACHE_S3_BUCKET", "source-images")
 	t.Setenv("CACHE_S3_REGION", "")
 	t.Setenv("MAX_WIDTH", "")
@@ -22,8 +22,8 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.ListenAddr != ":9999" {
 		t.Fatalf("ListenAddr = %q, want %q", cfg.ListenAddr, ":9999")
 	}
-	if cfg.ImgproxyURL != "http://localhost:8081" {
-		t.Fatalf("ImgproxyURL = %q, want %q", cfg.ImgproxyURL, "http://localhost:8081")
+	if cfg.ImgproxyURL != "http://imgproxy.example.com" {
+		t.Fatalf("ImgproxyURL = %q, want %q", cfg.ImgproxyURL, "http://imgproxy.example.com")
 	}
 	if cfg.CacheS3Bucket != "source-images" {
 		t.Fatalf("CacheS3Bucket = %q, want %q", cfg.CacheS3Bucket, "source-images")
@@ -79,6 +79,7 @@ func TestCustomConfig(t *testing.T) {
 
 func TestLoadCSV_Empty(t *testing.T) {
 	t.Setenv("CF_ORIGIN_SECRET", "")
+	t.Setenv("IMGPROXY_URL", "http://imgproxy.example.com")
 	t.Setenv("CACHE_S3_BUCKET", "test-bucket")
 	t.Setenv("ALLOWED_UPSTREAM_GATEWAYS", "upstream.com")
 	t.Setenv("ALLOWED_SOURCE_BUCKETS", "source-bucket")
@@ -94,6 +95,7 @@ func TestLoadCSV_Empty(t *testing.T) {
 
 func TestLoadCSV_Single(t *testing.T) {
 	t.Setenv("CF_ORIGIN_SECRET", "mysecret")
+	t.Setenv("IMGPROXY_URL", "http://imgproxy.example.com")
 	t.Setenv("CACHE_S3_BUCKET", "test-bucket")
 	t.Setenv("ALLOWED_UPSTREAM_GATEWAYS", "upstream.com")
 	t.Setenv("ALLOWED_SOURCE_BUCKETS", "source-bucket")
@@ -109,6 +111,7 @@ func TestLoadCSV_Single(t *testing.T) {
 
 func TestLoadCSV_Multiple(t *testing.T) {
 	t.Setenv("CF_ORIGIN_SECRET", "new-secret,old-secret")
+	t.Setenv("IMGPROXY_URL", "http://imgproxy.example.com")
 	t.Setenv("CACHE_S3_BUCKET", "test-bucket")
 	t.Setenv("ALLOWED_UPSTREAM_GATEWAYS", "upstream.com")
 	t.Setenv("ALLOWED_SOURCE_BUCKETS", "source-bucket")
@@ -127,6 +130,7 @@ func TestLoadCSV_Multiple(t *testing.T) {
 
 func TestLoadCSV_AllowedGateways(t *testing.T) {
 	t.Setenv("ALLOWED_UPSTREAM_GATEWAYS", "api.example.com,cdn.example.com")
+	t.Setenv("IMGPROXY_URL", "http://imgproxy.example.com")
 	t.Setenv("CACHE_S3_BUCKET", "test-bucket")
 	t.Setenv("ALLOWED_SOURCE_BUCKETS", "source-bucket")
 
@@ -144,6 +148,7 @@ func TestLoadCSV_AllowedGateways(t *testing.T) {
 
 func TestLoadCSV_TrimsWhitespace(t *testing.T) {
 	t.Setenv("CF_ORIGIN_SECRET", " secret-a , secret-b ")
+	t.Setenv("IMGPROXY_URL", "http://imgproxy.example.com")
 	t.Setenv("CACHE_S3_BUCKET", "test-bucket")
 	t.Setenv("ALLOWED_UPSTREAM_GATEWAYS", "upstream.com")
 	t.Setenv("ALLOWED_SOURCE_BUCKETS", "source-bucket")
@@ -192,6 +197,7 @@ func TestAllowlistValidation(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv("CACHE_S3_BUCKET", "test-bucket")
+			t.Setenv("IMGPROXY_URL", "http://imgproxy.example.com")
 			t.Setenv("ALLOWED_UPSTREAM_GATEWAYS", tc.allowedUpstreamGateways)
 			t.Setenv("ALLOWED_SOURCE_BUCKETS", tc.allowedSourceBuckets)
 
@@ -227,6 +233,7 @@ func TestLoadInvalidSettings(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv("CACHE_S3_BUCKET", "test")
+			t.Setenv("IMGPROXY_URL", "http://imgproxy.example.com")
 			t.Setenv("ALLOWED_UPSTREAM_GATEWAYS", "upstream.com")
 			t.Setenv("ALLOWED_SOURCE_BUCKETS", "source-bucket")
 			t.Setenv(tc.envVar, tc.value)
@@ -259,6 +266,7 @@ func TestLoadValidSettings(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv("CACHE_S3_BUCKET", "test")
+			t.Setenv("IMGPROXY_URL", "http://imgproxy.example.com")
 			t.Setenv("ALLOWED_UPSTREAM_GATEWAYS", "upstream.com")
 			t.Setenv("ALLOWED_SOURCE_BUCKETS", "source-bucket")
 			t.Setenv("MAX_WIDTH", tc.maxWidth)
@@ -284,7 +292,8 @@ func TestInvalidImgproxyURL(t *testing.T) {
 		imgproxyURL string
 		shouldFail  bool
 	}{
-		{"valid http", "http://localhost:8081", false},
+		{"empty string (required)", "", true},
+		{"valid http", "http://imgproxy.internal:8080", false},
 		{"valid https", "https://imgproxy.example.com", false},
 		{"invalid ftp scheme", "ftp://host", true},
 		{"invalid no scheme", "localhost:8081", true},

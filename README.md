@@ -1,15 +1,15 @@
 # image-optimize-proxy
 
-K8s-hosted Go reverse proxy that transforms images on demand using an imgproxy sidecar and caches results in S3.
+Go reverse proxy that transforms images on demand using an external imgproxy service and caches results in S3.
 
 ## Request Flow
 
 ```
-CloudFront → NLB → proxy(:8080) → S3 cache hit  → return cached
-                                 → S3 cache miss → upstream resolve
-                                                 → imgproxy(:8081) transform
-                                                 → store S3
-                                                 → return
+CloudFront → proxy(:8080) → S3 cache hit  → return cached
+                           → S3 cache miss → upstream resolve
+                                           → imgproxy transform
+                                           → store S3
+                                           → return
 ```
 
 CloudFront (or its Function) normalizes `imwidth`, `f`, and `q` query params before the request
@@ -26,7 +26,7 @@ See [`docs/architecture.md`](docs/architecture.md) for the full CloudFront ↔ p
 | `CACHE_S3_REGION` | `us-west-2` | `us-east-1` | AWS region of the S3 bucket |
 | `LISTEN_ADDR` | `:9999` | `:8080` | Proxy listen address |
 | `MAX_WIDTH` | `1920` | `1920` | Maximum allowed image width in pixels |
-| `IMGPROXY_URL` | `http://localhost:8081` | `http://localhost:8081` | imgproxy sidecar address |
+| `IMGPROXY_URL` | **required** | set at deploy time | External imgproxy service URL |
 
 > Code defaults apply when running locally. The Helm chart's ConfigMap overrides `LISTEN_ADDR`
 > to `:8080` and `CACHE_S3_REGION` to `us-east-1` at deploy time.
@@ -65,7 +65,7 @@ S3/imgproxy responses via `net/http/httptest`.
 
 ## Deployment
 
-Deployed via the included Helm chart alongside an imgproxy sidecar container.
+Requires an external [imgproxy](https://imgproxy.net/) service reachable at `IMGPROXY_URL`.
 
 ### Prerequisites
 
@@ -102,42 +102,8 @@ Minimum IAM policy for the cache bucket:
 > }
 > ```
 
-### Install from local chart
-
-```bash
-helm install image-optimize-proxy ./charts/cf-image-optimize-proxy \
-  --set image.repository=ghcr.io/{owner}/image-optimize-proxy \
-  --set image.tag={version} \
-  --set config.cacheS3Bucket=my-image-cache-bucket \
-  --set config.cacheS3Region=us-east-1 \
-  --set serviceAccount.roleArn=arn:aws:iam::{account-id}:role/{role-name}
-```
-
-### Install from OCI registry
-
-```bash
-helm install image-optimize-proxy \
-  oci://ghcr.io/{owner}/charts/cf-image-optimize-proxy \
-  --version {version} \
-  --set image.repository=ghcr.io/{owner}/image-optimize-proxy \
-  --set image.tag={version} \
-  --set config.cacheS3Bucket=my-image-cache-bucket \
-  --set config.cacheS3Region=us-east-1 \
-  --set serviceAccount.roleArn=arn:aws:iam::{account-id}:role/{role-name}
-```
-
-Key Helm values: `config.cacheS3Bucket`, `config.cacheS3Region`, `image.repository`, `image.tag`,
-`serviceAccount.roleArn`. See
-[`charts/cf-image-optimize-proxy/values.yaml`](charts/cf-image-optimize-proxy/values.yaml) for the full
-reference.
-
-The chart creates an internal AWS NLB via `service.beta.kubernetes.io/aws-load-balancer-*`
-annotations. **IRSA** (IAM Roles for Service Accounts) is required for S3 access — set
-`serviceAccount.roleArn` in Helm values.
-
 ### Published artifacts (GitHub)
 
 | Artifact | Registry |
 |---|---|
 | Docker image | `ghcr.io/{owner}/image-optimize-proxy:{tag}` |
-| Helm chart | `oci://ghcr.io/{owner}/charts/cf-image-optimize-proxy:{version}` |

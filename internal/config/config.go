@@ -11,7 +11,6 @@ import (
 
 const (
 	defaultListenAddr      = ":9999"
-	defaultImgproxyURL     = "http://localhost:8081"
 	defaultCacheS3Region   = "us-west-2"
 	defaultMaxWidth        = 1920
 	defaultUpstreamTimeout = 30 * time.Second
@@ -65,7 +64,7 @@ func Load() (*Config, error) {
 
 	cfg := &Config{
 		ListenAddr:               envOrDefault("LISTEN_ADDR", defaultListenAddr),
-		ImgproxyURL:              envOrDefault("IMGPROXY_URL", defaultImgproxyURL),
+		ImgproxyURL:              strings.TrimSpace(os.Getenv("IMGPROXY_URL")),
 		CacheS3Bucket:            strings.TrimSpace(os.Getenv("CACHE_S3_BUCKET")),
 		CacheS3Region:            envOrDefault("CACHE_S3_REGION", defaultCacheS3Region),
 		MaxWidth:                 maxWidth,
@@ -154,6 +153,9 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("ALLOWED_SOURCE_BUCKETS is empty; configuration is required")
 	}
 
+	if c.ImgproxyURL == "" {
+		return fmt.Errorf("IMGPROXY_URL is required")
+	}
 	if _, err := url.ParseRequestURI(c.ImgproxyURL); err != nil || !strings.HasPrefix(c.ImgproxyURL, "http") {
 		return fmt.Errorf("IMGPROXY_URL %q is not a valid HTTP URL", c.ImgproxyURL)
 	}

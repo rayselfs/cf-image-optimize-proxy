@@ -5,15 +5,15 @@ Extends the global `~/.config/opencode/AGENTS.md`.
 
 ## Project Overview
 
-**image-optimize-proxy** is a Kubernetes-hosted Go reverse proxy that performs on-demand image
-transformation via an imgproxy sidecar and caches results in S3.
+**image-optimize-proxy** is a Go reverse proxy that performs on-demand image
+transformation via an external imgproxy service and caches results in S3.
 
 ```
-CloudFront → NLB → proxy(:8080) → S3 cache hit  → return cached
-                                 → S3 cache miss → upstream resolve
-                                                 → imgproxy(:8081) transform
-                                                 → store S3
-                                                 → return
+CloudFront → proxy(:8080) → S3 cache hit  → return cached
+                           → S3 cache miss → upstream resolve
+                                           → imgproxy transform
+                                           → store S3
+                                           → return
 ```
 
 CloudFront (or its Function) normalizes `imwidth`, `f`, and `q` query params before the request
@@ -24,7 +24,7 @@ reaches the proxy, and injects `X-Img-Source-Type` / `X-Img-Source-Bucket` /
 
 - **Language**: Go 1.25
 - **Key dependencies**: `aws-sdk-go-v2` (S3 cache + presign), `golang.org/x/sync` (coalescing)
-- **Image processing**: imgproxy sidecar (`darthsim/imgproxy`) at `http://localhost:8081`
+- **Image processing**: external imgproxy service (`darthsim/imgproxy`), URL configured via `IMGPROXY_URL`
 - **Cache backend**: AWS S3
 - **Deployment**: Kubernetes via Helm chart (`charts/cf-image-optimize-proxy/`)
 - **Container**: Multi-stage Docker build → `distroless/static-debian12:nonroot`
@@ -56,7 +56,7 @@ docs/architecture.md             # CloudFront ↔ proxy contract (cache key, for
 | `CACHE_S3_REGION` | `us-west-2` | `us-east-1` | AWS region of the S3 bucket |
 | `LISTEN_ADDR` | `:9999` | `:8080` | HTTP server listen address |
 | `MAX_WIDTH` | `1920` | `1920` | Maximum image width in pixels |
-| `IMGPROXY_URL` | `http://localhost:8081` | `http://localhost:8081` | imgproxy sidecar URL |
+| `IMGPROXY_URL` | — (**required**) | set at deploy time | External imgproxy service URL |
 
 > The Helm chart's ConfigMap overrides `LISTEN_ADDR` and `CACHE_S3_REGION` from their code defaults.
 > When running locally (without Helm), the code defaults apply.
@@ -122,8 +122,6 @@ and verify end-to-end flow using `net/http/httptest` to mock S3 and imgproxy.
 ## Deployment Notes
 
 - Requires IRSA (IAM Roles for Service Accounts) for S3 access in EKS.
-- imgproxy runs as a sidecar container in the same pod (see Helm `deployment.yaml`).
-- Helm chart creates an internal AWS NLB via `service.beta.kubernetes.io/aws-load-balancer-*` annotations.
+- imgproxy runs as an **external service** reachable at `IMGPROXY_URL` (not a sidecar).
 - S3 bucket must exist in `CACHE_S3_REGION` before deployment.
 - Docker images published to `ghcr.io/{owner}/{repo}` via GitHub Actions `release.yml`.
-- Helm chart published to `oci://ghcr.io/{owner}/charts` via GitHub Actions `release.yml`.
