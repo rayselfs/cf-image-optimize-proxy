@@ -146,7 +146,9 @@ func (h *Handler) streamResponse(w http.ResponseWriter, body io.Reader, contentT
 	w.Header().Set("X-Cache", cacheStatus)
 	bufPtr := copyBufPool.Get().(*[]byte)
 	defer copyBufPool.Put(bufPtr)
-	_, _ = io.CopyBuffer(w, body, *bufPtr)
+	if _, err := io.CopyBuffer(w, body, *bufPtr); err != nil {
+		slog.Debug("handler: write response", "error", err)
+	}
 }
 
 func cacheKeyHash(key string) string {
@@ -299,7 +301,9 @@ func (h *Handler) writeResult(w http.ResponseWriter, result processResult) {
 	}
 	w.Header().Set("Cache-Control", "public, max-age=31536000")
 	w.Header().Set("X-Cache", result.cacheStatus)
-	_, _ = w.Write(result.body)
+	if _, err := w.Write(result.body); err != nil {
+		slog.Debug("handler: write result", "error", err)
+	}
 }
 
 func (h *Handler) writeError(w http.ResponseWriter, err error) {

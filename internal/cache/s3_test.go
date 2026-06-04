@@ -161,7 +161,7 @@ func (m *mockS3Uploader) Upload(_ context.Context, input *s3.PutObjectInput, _ .
 
 func TestS3CachePutStreaming(t *testing.T) {
 	mockUploader := &mockS3Uploader{}
-	c := NewS3CacheWithMultipart(&mockS3Client{}, "bucket", mockUploader, 1)
+	c := NewS3CacheWithMultipart(&mockS3Client{}, "bucket", mockUploader)
 
 	pr, pw := io.Pipe()
 	go func() {

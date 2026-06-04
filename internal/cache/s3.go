@@ -65,7 +65,7 @@ func NewS3Cache(client S3API, bucket string) *S3Cache {
 	return &S3Cache{client: client, bucket: bucket}
 }
 
-func NewS3CacheWithMultipart(client S3API, bucket string, uploader s3Uploader, multipartThreshold int64) *S3Cache {
+func NewS3CacheWithMultipart(client S3API, bucket string, uploader s3Uploader) *S3Cache {
 	return &S3Cache{
 		client:   client,
 		bucket:   bucket,

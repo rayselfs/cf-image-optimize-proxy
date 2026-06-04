@@ -103,7 +103,7 @@ func main() {
 	s3Uploader := manager.NewUploader(s3Client, func(u *manager.Uploader) {
 		u.PartSize = multipartThresholdBytes
 	})
-	s3Cache := cache.NewS3CacheWithMultipart(s3Client, cfg.CacheS3Bucket, s3Uploader, multipartThresholdBytes)
+	s3Cache := cache.NewS3CacheWithMultipart(s3Client, cfg.CacheS3Bucket, s3Uploader)
 	sharedTransport := httpclient.NewTransport()
 	imgproxyClient := imgproxy.NewClientWithTransport(cfg.ImgproxyURL, cfg.ImgproxyTimeout, sharedTransport)
 	resolver, err := upstream.NewResolverWithEagerPresigner(context.Background(), cfg.UpstreamTimeout, cfg.AllowedUpstreamGateways, cfg.AllowedSourceBuckets, sharedTransport)
