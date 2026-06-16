@@ -1,6 +1,7 @@
 .PHONY: build test test-go test-helm lint lint-helm package-chart docker
 
 HELM_CHART := charts/cf-image-optimize-proxy
+HELM_UNITTEST_VERSION := v1.0.2
 HELM_REQUIRED_VALUES := \
 	--set config.cacheS3Bucket=cache-bucket \
 	--set config.imgproxyURL=http://imgproxy.default.svc.cluster.local \
@@ -16,9 +17,10 @@ test-go:
 	go test ./... -v -cover -race
 
 test-helm:
-	@if ! helm plugin list | grep -q "unittest"; then \
-		echo "Installing helm-unittest plugin..."; \
-		helm plugin install https://github.com/helm-unittest/helm-unittest.git; \
+	@if ! helm unittest --help >/dev/null 2>&1; then \
+		echo "Installing helm-unittest plugin $(HELM_UNITTEST_VERSION)..."; \
+		helm plugin uninstall unittest >/dev/null 2>&1 || true; \
+		helm plugin install https://github.com/helm-unittest/helm-unittest.git --version $(HELM_UNITTEST_VERSION); \
 	fi
 	helm unittest $(HELM_CHART)
 

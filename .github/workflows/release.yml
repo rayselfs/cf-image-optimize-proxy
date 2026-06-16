@@ -5,6 +5,9 @@ on:
     branches: [main]
     tags: ["v*.*.*"]
 
+env:
+  HELM_UNITTEST_VERSION: v1.0.2
+
 jobs:
   docker:
     name: Build & Push Docker Image
@@ -118,7 +121,7 @@ jobs:
             --set 'config.allowedSourceBuckets[0]=source-bucket'
 
       - name: Install helm-unittest
-        run: helm plugin install https://github.com/helm-unittest/helm-unittest.git
+        run: helm plugin install https://github.com/helm-unittest/helm-unittest.git --version "$HELM_UNITTEST_VERSION"
 
       - name: Helm unit tests
         run: helm unittest charts/cf-image-optimize-proxy
