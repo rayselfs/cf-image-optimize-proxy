@@ -207,6 +207,50 @@ func TestResolveGatewayFromHeader(t *testing.T) {
 	}
 }
 
+func TestResolveGatewayStripsTransformQueryParamsFromSource(t *testing.T) {
+	var gotRequestURIs []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotRequestURIs = append(gotRequestURIs, r.URL.RequestURI())
+		w.Header().Set("Content-Type", "image/jpeg")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("gateway image"))
+	}))
+	defer server.Close()
+
+	req := httptest.NewRequest(http.MethodGet, "http://assets.example/images/cat.jpg?v=123&imwidth=640&foo=bar&f=webp&q=75", nil)
+	req.Host = "assets.example"
+	req.Header.Set("X-Img-Upstream-Gateway", server.URL)
+
+	sourceURL, headFunc, fetchFunc, err := NewResolver(30*time.Second, nil, nil).Resolve(req)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+
+	wantSourceURL := server.URL + "/images/cat.jpg?v=123&foo=bar"
+	if sourceURL != wantSourceURL {
+		t.Fatalf("sourceURL = %q, want %q", sourceURL, wantSourceURL)
+	}
+
+	if _, err := headFunc(); err != nil {
+		t.Fatalf("headFunc() error = %v", err)
+	}
+	body, _, err := fetchFunc()
+	if err != nil {
+		t.Fatalf("fetchFunc() error = %v", err)
+	}
+	defer body.Close()
+
+	wantRequestURI := "/images/cat.jpg?v=123&foo=bar"
+	if len(gotRequestURIs) != 2 {
+		t.Fatalf("got %d upstream requests, want 2", len(gotRequestURIs))
+	}
+	for _, got := range gotRequestURIs {
+		if got != wantRequestURI {
+			t.Fatalf("upstream RequestURI = %q, want %q", got, wantRequestURI)
+		}
+	}
+}
+
 func TestResolveGatewayMissingHeader(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "http://assets.example/images/cat.jpg", nil)
 

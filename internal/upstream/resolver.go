@@ -133,7 +133,7 @@ func (d *DefaultResolver) Resolve(r *http.Request) (string, func() (string, erro
 		return "", nil, nil, fmt.Errorf("upstream gateway not in allowlist")
 	}
 
-	sourceURL := gatewayURL.Scheme + "://" + gatewayURL.Host + requestURI(r)
+	sourceURL := gatewayURL.Scheme + "://" + gatewayURL.Host + sourceRequestURI(r)
 	headFunc := func() (string, error) {
 		return d.headHTTP(r.Context(), sourceURL, r.Host)
 	}
@@ -248,6 +248,44 @@ func requestURI(r *http.Request) string {
 		return "/"
 	}
 	return uri
+}
+
+func sourceRequestURI(r *http.Request) string {
+	path := r.URL.EscapedPath()
+	if path == "" {
+		path = "/"
+	}
+	query := stripTransformQueryParams(r.URL.RawQuery)
+	if query == "" {
+		return path
+	}
+	return path + "?" + query
+}
+
+func stripTransformQueryParams(rawQuery string) string {
+	if rawQuery == "" {
+		return ""
+	}
+
+	parts := strings.Split(rawQuery, "&")
+	kept := make([]string, 0, len(parts))
+	for _, part := range parts {
+		key := part
+		if i := strings.IndexByte(part, '='); i >= 0 {
+			key = part[:i]
+		}
+		decodedKey, err := url.QueryUnescape(key)
+		if err != nil {
+			decodedKey = key
+		}
+		switch decodedKey {
+		case "imwidth", "f", "q":
+			continue
+		default:
+			kept = append(kept, part)
+		}
+	}
+	return strings.Join(kept, "&")
 }
 
 func (d *DefaultResolver) fetchHTTP(ctx context.Context, rawURL, host string) (io.ReadCloser, string, error) {
