@@ -1,4 +1,4 @@
-# image-optimize-proxy
+# cf-image-optimize-proxy
 
 Go reverse proxy that transforms images on demand using an external imgproxy service and caches results in S3.
 
@@ -20,32 +20,32 @@ See [`docs/architecture.md`](docs/architecture.md) for the full CloudFront ↔ p
 
 ## Configuration
 
-| Env var | Default | Helm override | Description |
-|---|---|---|---|
+| Env var           | Default      | Helm override      | Description                             |
+| ----------------- | ------------ | ------------------ | --------------------------------------- |
 | `CACHE_S3_BUCKET` | **required** | set at deploy time | S3 bucket for cached transformed images |
-| `CACHE_S3_REGION` | `us-west-2` | `us-east-1` | AWS region of the S3 bucket |
-| `LISTEN_ADDR` | `:9999` | `:8080` | Proxy listen address |
-| `MAX_WIDTH` | `1920` | `1920` | Maximum allowed image width in pixels |
-| `IMGPROXY_URL` | **required** | set at deploy time | External imgproxy service URL |
+| `CACHE_S3_REGION` | `us-west-2`  | `us-east-1`        | AWS region of the S3 bucket             |
+| `LISTEN_ADDR`     | `:9999`      | `:8080`            | Proxy listen address                    |
+| `MAX_WIDTH`       | `1920`       | `1920`             | Maximum allowed image width in pixels   |
+| `IMGPROXY_URL`    | **required** | set at deploy time | External imgproxy service URL           |
 
 > Code defaults apply when running locally. The Helm chart's ConfigMap overrides `LISTEN_ADDR`
 > to `:8080` and `CACHE_S3_REGION` to `us-east-1` at deploy time.
 
 ### Request Headers (set by CloudFront)
 
-| Header | Required | Description |
-|---|---|---|
-| `X-Img-Source-Type` | optional | `s3` → fetch from S3; any other value or absent → use upstream gateway |
-| `X-Img-Source-Bucket` | when `s3` | S3 bucket containing the source image |
-| `X-Img-Upstream-Gateway` | when non-`s3` | Upstream gateway URL; **required** when not using S3 |
+| Header                   | Required      | Description                                                            |
+| ------------------------ | ------------- | ---------------------------------------------------------------------- |
+| `X-Img-Source-Type`      | optional      | `s3` → fetch from S3; any other value or absent → use upstream gateway |
+| `X-Img-Source-Bucket`    | when `s3`     | S3 bucket containing the source image                                  |
+| `X-Img-Upstream-Gateway` | when non-`s3` | Upstream gateway URL; **required** when not using S3                   |
 
 ### Query Params (normalized by CloudFront Function)
 
-| Param | Example | Description |
-|---|---|---|
-| `imwidth` | `640` | Target width — snapped to nearest ceiling breakpoint (320/640/960/1280/1920) |
-| `f` | `webp` | Output format (`avif`, `webp`, `jpeg`) |
-| `q` | `75` | Quality (1–100; default 75) |
+| Param     | Example | Description                                                                  |
+| --------- | ------- | ---------------------------------------------------------------------------- |
+| `imwidth` | `640`   | Target width — snapped to nearest ceiling breakpoint (320/640/960/1280/1920) |
+| `f`       | `webp`  | Output format (`avif`, `webp`, `jpeg`)                                       |
+| `q`       | `75`    | Quality (1–100; default 75)                                                  |
 
 If none of these params are present, the proxy passes the request through without transformation.
 
@@ -55,9 +55,9 @@ Requirements: Go 1.25+
 
 ```bash
 make test     # go test ./... -v -cover -race
-make build    # go build -o bin/image-optimize-proxy ./cmd/server/
-make lint     # go vet ./...
-make docker   # docker build -t image-optimize-proxy:dev .
+make build    # go build -o bin/cf-image-optimize-proxy ./cmd/server/
+make lint     # go vet ./... and helm lint/template
+make docker   # docker build -t cf-image-optimize-proxy:dev .
 ```
 
 Integration tests in `internal/handler/integration_test.go` start a real HTTP server and mock
@@ -81,10 +81,7 @@ Minimum IAM policy for the cache bucket:
   "Statement": [
     {
       "Effect": "Allow",
-      "Action": [
-        "s3:GetObject",
-        "s3:PutObject"
-      ],
+      "Action": ["s3:GetObject", "s3:PutObject"],
       "Resource": "arn:aws:s3:::<cache-bucket>/*"
     }
   ]
@@ -104,7 +101,41 @@ Minimum IAM policy for the cache bucket:
 
 ### Deploying on Kubernetes
 
-Use the standard image. Configure S3 access via IRSA and set the required env vars via a ConfigMap/Secret.
+Use the Helm chart in `charts/cf-image-optimize-proxy`. Configure S3 access via IRSA and set the required runtime values:
+
+```bash
+helm upgrade --install image-proxy charts/cf-image-optimize-proxy \
+  --namespace image-proxy --create-namespace \
+  --set config.cacheS3Bucket=<cache-bucket> \
+  --set config.imgproxyURL=http://imgproxy.default.svc.cluster.local \
+  --set config.allowedUpstreamGateways[0]=images.example.com \
+  --set config.allowedSourceBuckets[0]=source-bucket \
+  --set serviceAccount.annotations.eks\.amazonaws\.com/role-arn=<irsa-role-arn>
+```
+
+If `CF_ORIGIN_SECRET` is created by a controller such as External Secrets Operator, render that resource through `extraManifests` and point the deployment at the generated Secret with `existingSecret.name`. The generated Secret must contain a `CF_ORIGIN_SECRET` key:
+
+```yaml
+existingSecret:
+  name: image-proxy-origin-secret
+
+extraManifests:
+  - apiVersion: external-secrets.io/v1
+    kind: ExternalSecret
+    metadata:
+      name: '{{ include "cf-image-optimize-proxy.fullname" . }}-origin'
+    spec:
+      refreshInterval: 1h
+      secretStoreRef:
+        kind: ClusterSecretStore
+        name: aws-secrets-manager
+      target:
+        name: image-proxy-origin-secret
+      data:
+        - secretKey: CF_ORIGIN_SECRET
+          remoteRef:
+            key: cloudfront/origin-secret
+```
 
 ### Deploying on AWS Lambda
 
@@ -112,19 +143,20 @@ Use the Lambda image (`-lambda` suffix). The image bundles [AWS Lambda Web Adapt
 
 **Lambda function configuration:**
 
-| Env var | Value | Notes |
-|---|---|---|
-| `AWS_LAMBDA_EXEC_WRAPPER` | `/lambda-adapter` | Activates Lambda Web Adapter |
-| `AWS_LWA_PORT` | `8080` | Port the adapter forwards to |
-| `AWS_LWA_READINESS_CHECK_PATH` | `/health` | Cold-start health check (avoids probing imgproxy) |
-| `AWS_LWA_INVOKE_MODE` | `response_stream` | Required for large file passthrough |
-| `LISTEN_ADDR` | `:8080` | Must match `AWS_LWA_PORT` |
-| `CACHE_S3_BUCKET` | `<bucket>` | |
-| `IMGPROXY_URL` | `<url>` | |
-| `ALLOWED_UPSTREAM_GATEWAYS` | `<csv>` | |
-| `ALLOWED_SOURCE_BUCKETS` | `<csv>` | |
+| Env var                        | Value             | Notes                                             |
+| ------------------------------ | ----------------- | ------------------------------------------------- |
+| `AWS_LAMBDA_EXEC_WRAPPER`      | `/lambda-adapter` | Activates Lambda Web Adapter                      |
+| `AWS_LWA_PORT`                 | `8080`            | Port the adapter forwards to                      |
+| `AWS_LWA_READINESS_CHECK_PATH` | `/health`         | Cold-start health check (avoids probing imgproxy) |
+| `AWS_LWA_INVOKE_MODE`          | `response_stream` | Required for large file passthrough               |
+| `LISTEN_ADDR`                  | `:8080`           | Must match `AWS_LWA_PORT`                         |
+| `CACHE_S3_BUCKET`              | `<bucket>`        |                                                   |
+| `IMGPROXY_URL`                 | `<url>`           |                                                   |
+| `ALLOWED_UPSTREAM_GATEWAYS`    | `<csv>`           |                                                   |
+| `ALLOWED_SOURCE_BUCKETS`       | `<csv>`           |                                                   |
 
 **Lambda Function URL:**
+
 - `InvokeMode: RESPONSE_STREAM` — required for streaming large files to CloudFront
 - `AuthType: NONE` — CloudFront origin verification is handled by `CF_ORIGIN_SECRET`
 
@@ -134,7 +166,8 @@ Use the Lambda image (`-lambda` suffix). The image bundles [AWS Lambda Web Adapt
 
 ### Published artifacts (GitHub)
 
-| Artifact | Registry |
-|---|---|
-| Docker image (K8s) | `ghcr.io/{owner}/image-optimize-proxy:{tag}` |
-| Docker image (Lambda) | `ghcr.io/{owner}/image-optimize-proxy-lambda:{tag}` |
+| Artifact              | Registry                                                     |
+| --------------------- | ------------------------------------------------------------ |
+| Docker image (K8s)    | `ghcr.io/{owner}/{repo}:{tag}`                               |
+| Docker image (Lambda) | `ghcr.io/{owner}/{repo}-lambda:{tag}`                        |
+| Helm chart            | `oci://ghcr.io/{owner}/charts/cf-image-optimize-proxy:{tag}` |

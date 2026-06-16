@@ -1,4 +1,4 @@
-module github.com/rayselfs/cloudfront-image-optimize-proxy
+module github.com/rayselfs/cf-image-optimize-proxy
 
 go 1.25.0
 

@@ -10,9 +10,9 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/rayselfs/cloudfront-image-optimize-proxy/internal/cache"
-	"github.com/rayselfs/cloudfront-image-optimize-proxy/internal/imgproxy"
-	"github.com/rayselfs/cloudfront-image-optimize-proxy/internal/upstream"
+	"github.com/rayselfs/cf-image-optimize-proxy/internal/cache"
+	"github.com/rayselfs/cf-image-optimize-proxy/internal/imgproxy"
+	"github.com/rayselfs/cf-image-optimize-proxy/internal/upstream"
 )
 
 type mockCache struct {

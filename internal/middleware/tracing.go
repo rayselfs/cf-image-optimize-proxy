@@ -3,7 +3,7 @@ package middleware
 import (
 	"net/http"
 
-	"github.com/rayselfs/cloudfront-image-optimize-proxy/internal/tracing"
+	"github.com/rayselfs/cf-image-optimize-proxy/internal/tracing"
 )
 
 func Tracing(next http.Handler) http.Handler {

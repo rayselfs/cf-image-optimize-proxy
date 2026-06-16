@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"runtime/debug"
 
-	"github.com/rayselfs/cloudfront-image-optimize-proxy/internal/requestid"
+	"github.com/rayselfs/cf-image-optimize-proxy/internal/requestid"
 )
 
 // Recovery recovers from panics, logs the error with stack trace, and returns 500.

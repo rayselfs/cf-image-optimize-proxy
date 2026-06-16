@@ -8,9 +8,9 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/rayselfs/cloudfront-image-optimize-proxy/internal/metrics"
-	"github.com/rayselfs/cloudfront-image-optimize-proxy/internal/requestid"
-	"github.com/rayselfs/cloudfront-image-optimize-proxy/internal/tracing"
+	"github.com/rayselfs/cf-image-optimize-proxy/internal/metrics"
+	"github.com/rayselfs/cf-image-optimize-proxy/internal/requestid"
+	"github.com/rayselfs/cf-image-optimize-proxy/internal/tracing"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"

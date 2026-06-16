@@ -5,7 +5,7 @@ import (
 	"encoding/hex"
 	"net/http"
 
-	"github.com/rayselfs/cloudfront-image-optimize-proxy/internal/requestid"
+	"github.com/rayselfs/cf-image-optimize-proxy/internal/requestid"
 )
 
 // CorrelationID is a middleware that reads or generates a request correlation ID.

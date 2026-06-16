@@ -11,10 +11,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rayselfs/cloudfront-image-optimize-proxy/internal/cache"
-	"github.com/rayselfs/cloudfront-image-optimize-proxy/internal/coalesce"
-	"github.com/rayselfs/cloudfront-image-optimize-proxy/internal/imgproxy"
-	"github.com/rayselfs/cloudfront-image-optimize-proxy/internal/upstream"
+	"github.com/rayselfs/cf-image-optimize-proxy/internal/cache"
+	"github.com/rayselfs/cf-image-optimize-proxy/internal/coalesce"
+	"github.com/rayselfs/cf-image-optimize-proxy/internal/imgproxy"
+	"github.com/rayselfs/cf-image-optimize-proxy/internal/upstream"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"

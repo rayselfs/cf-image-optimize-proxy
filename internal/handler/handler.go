@@ -12,11 +12,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/rayselfs/cloudfront-image-optimize-proxy/internal/cache"
-	"github.com/rayselfs/cloudfront-image-optimize-proxy/internal/coalesce"
-	"github.com/rayselfs/cloudfront-image-optimize-proxy/internal/imgproxy"
-	"github.com/rayselfs/cloudfront-image-optimize-proxy/internal/metrics"
-	"github.com/rayselfs/cloudfront-image-optimize-proxy/internal/upstream"
+	"github.com/rayselfs/cf-image-optimize-proxy/internal/cache"
+	"github.com/rayselfs/cf-image-optimize-proxy/internal/coalesce"
+	"github.com/rayselfs/cf-image-optimize-proxy/internal/imgproxy"
+	"github.com/rayselfs/cf-image-optimize-proxy/internal/metrics"
+	"github.com/rayselfs/cf-image-optimize-proxy/internal/upstream"
 )
 
 var copyBufPool = sync.Pool{

@@ -1,7 +1,14 @@
-.PHONY: build test test-go test-helm lint docker
+.PHONY: build test test-go test-helm lint lint-helm package-chart docker
+
+HELM_CHART := charts/cf-image-optimize-proxy
+HELM_REQUIRED_VALUES := \
+	--set config.cacheS3Bucket=cache-bucket \
+	--set config.imgproxyURL=http://imgproxy.default.svc.cluster.local \
+	--set config.allowedUpstreamGateways[0]=images.example.com \
+	--set config.allowedSourceBuckets[0]=source-bucket
 
 build:
-	go build -o bin/image-optimize-proxy ./cmd/server/
+	go build -o bin/cf-image-optimize-proxy ./cmd/server/
 
 test: test-go test-helm
 
@@ -13,10 +20,17 @@ test-helm:
 		echo "Installing helm-unittest plugin..."; \
 		helm plugin install https://github.com/helm-unittest/helm-unittest.git; \
 	fi
-	helm unittest charts/cf-image-optimize-proxy
+	helm unittest $(HELM_CHART)
 
-lint:
+lint: lint-helm
 	go vet ./...
 
+lint-helm:
+	helm lint $(HELM_CHART) $(HELM_REQUIRED_VALUES)
+	helm template image-proxy $(HELM_CHART) $(HELM_REQUIRED_VALUES) >/dev/null
+
+package-chart:
+	helm package $(HELM_CHART) --destination dist
+
 docker:
-	docker build -t image-optimize-proxy:dev .
+	docker build -t cf-image-optimize-proxy:dev .

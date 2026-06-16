@@ -5,7 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/rayselfs/cloudfront-image-optimize-proxy/internal/requestid"
+	"github.com/rayselfs/cf-image-optimize-proxy/internal/requestid"
 )
 
 func TestCorrelationIDForwarded(t *testing.T) {

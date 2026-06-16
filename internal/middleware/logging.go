@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/rayselfs/cloudfront-image-optimize-proxy/internal/metrics"
-	"github.com/rayselfs/cloudfront-image-optimize-proxy/internal/requestid"
+	"github.com/rayselfs/cf-image-optimize-proxy/internal/metrics"
+	"github.com/rayselfs/cf-image-optimize-proxy/internal/requestid"
 )
 
 // Logging is a structured JSON logging middleware.
