@@ -1,0 +1,28 @@
+suite: service
+templates:
+  - templates/serviceaccount.yaml
+  - templates/service.yaml
+tests:
+  - it: renders an IRSA-ready service account
+    template: templates/serviceaccount.yaml
+    set:
+      serviceAccount.annotations.eks\.amazonaws\.com/role-arn: arn:aws:iam::123456789012:role/image-proxy
+    asserts:
+      - isKind:
+          of: ServiceAccount
+      - equal:
+          path: metadata.annotations["eks.amazonaws.com/role-arn"]
+          value: arn:aws:iam::123456789012:role/image-proxy
+
+  - it: exposes the HTTP port through a service
+    template: templates/service.yaml
+    asserts:
+      - isKind:
+          of: Service
+      - equal:
+          path: spec.ports[0].port
+          value: 80
+      - equal:
+          path: spec.ports[0].targetPort
+          value: http
+

@@ -63,18 +63,18 @@ func Load() (*Config, error) {
 	}
 
 	cfg := &Config{
-		ListenAddr:               envOrDefault("LISTEN_ADDR", defaultListenAddr),
-		ImgproxyURL:              strings.TrimSpace(os.Getenv("IMGPROXY_URL")),
-		CacheS3Bucket:            strings.TrimSpace(os.Getenv("CACHE_S3_BUCKET")),
-		CacheS3Region:            envOrDefault("CACHE_S3_REGION", defaultCacheS3Region),
-		MaxWidth:                 maxWidth,
-		UpstreamTimeout:          upstreamTimeout,
-		ImgproxyTimeout:          imgproxyTimeout,
+		ListenAddr:              envOrDefault("LISTEN_ADDR", defaultListenAddr),
+		ImgproxyURL:             strings.TrimSpace(os.Getenv("IMGPROXY_URL")),
+		CacheS3Bucket:           strings.TrimSpace(os.Getenv("CACHE_S3_BUCKET")),
+		CacheS3Region:           envOrDefault("CACHE_S3_REGION", defaultCacheS3Region),
+		MaxWidth:                maxWidth,
+		UpstreamTimeout:         upstreamTimeout,
+		ImgproxyTimeout:         imgproxyTimeout,
 		ShutdownTimeout:         shutdownTimeout,
 		OriginSecrets:           loadCSV("CF_ORIGIN_SECRET"),
-		AllowedUpstreamGateways:  loadCSV("ALLOWED_UPSTREAM_GATEWAYS"),
-		AllowedSourceBuckets:     loadCSV("ALLOWED_SOURCE_BUCKETS"),
-		DefaultQuality:           defaultQualityVal,
+		AllowedUpstreamGateways: loadCSV("ALLOWED_UPSTREAM_GATEWAYS"),
+		AllowedSourceBuckets:    loadCSV("ALLOWED_SOURCE_BUCKETS"),
+		DefaultQuality:          defaultQualityVal,
 	}
 
 	if cfg.CacheS3Bucket == "" {
@@ -156,7 +156,8 @@ func (c *Config) Validate() error {
 	if c.ImgproxyURL == "" {
 		return fmt.Errorf("IMGPROXY_URL is required")
 	}
-	if _, err := url.ParseRequestURI(c.ImgproxyURL); err != nil || !strings.HasPrefix(c.ImgproxyURL, "http") {
+	imgproxyURL, err := url.Parse(c.ImgproxyURL)
+	if err != nil || imgproxyURL.Host == "" || (imgproxyURL.Scheme != "http" && imgproxyURL.Scheme != "https") {
 		return fmt.Errorf("IMGPROXY_URL %q is not a valid HTTP URL", c.ImgproxyURL)
 	}
 

@@ -1,0 +1,27 @@
+suite: autoscaling
+templates:
+  - templates/hpa.yaml
+tests:
+  - it: skips HPA by default
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: renders an autoscaling/v2 HPA when enabled
+    set:
+      autoscaling.enabled: true
+    asserts:
+      - isKind:
+          of: HorizontalPodAutoscaler
+      - equal:
+          path: apiVersion
+          value: autoscaling/v2
+      - equal:
+          path: spec.minReplicas
+          value: 2
+      - equal:
+          path: spec.maxReplicas
+          value: 10
+      - equal:
+          path: spec.metrics[0].resource.name
+          value: cpu

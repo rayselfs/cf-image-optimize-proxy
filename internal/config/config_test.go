@@ -209,7 +209,6 @@ func TestAllowlistValidation(t *testing.T) {
 	}
 }
 
-
 func TestLoadInvalidSettings(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -296,6 +295,7 @@ func TestInvalidImgproxyURL(t *testing.T) {
 		{"valid http", "http://imgproxy.internal:8080", false},
 		{"valid https", "https://imgproxy.example.com", false},
 		{"invalid ftp scheme", "ftp://host", true},
+		{"invalid http-like scheme", "httpx://host", true},
 		{"invalid no scheme", "localhost:8081", true},
 		{"invalid malformed", "not-a-url", true},
 	}

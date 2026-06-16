@@ -129,17 +129,8 @@ func (d *DefaultResolver) Resolve(r *http.Request) (string, func() (string, erro
 		return "", nil, nil, fmt.Errorf("upstream gateway scheme %q not allowed: only http/https permitted", gatewayURL.Scheme)
 	}
 
-	if len(d.allowedGateways) > 0 {
-		allowed := false
-		for _, g := range d.allowedGateways {
-			if gatewayURL.Host == g {
-				allowed = true
-				break
-			}
-		}
-		if !allowed {
-			return "", nil, nil, fmt.Errorf("upstream gateway not in allowlist")
-		}
+	if len(d.allowedGateways) > 0 && !isGatewayAllowed(gatewayURL, d.allowedGateways) {
+		return "", nil, nil, fmt.Errorf("upstream gateway not in allowlist")
 	}
 
 	sourceURL := gatewayURL.Scheme + "://" + gatewayURL.Host + requestURI(r)
@@ -151,6 +142,37 @@ func (d *DefaultResolver) Resolve(r *http.Request) (string, func() (string, erro
 	}
 
 	return sourceURL, headFunc, fetchFunc, nil
+}
+
+func isGatewayAllowed(gatewayURL *url.URL, allowedGateways []string) bool {
+	gatewayHost := strings.ToLower(gatewayURL.Hostname())
+	gatewayPort := gatewayURL.Port()
+
+	for _, allowed := range allowedGateways {
+		allowedHost, allowedPort, ok := normalizeAllowedGateway(allowed)
+		if !ok || gatewayHost != allowedHost {
+			continue
+		}
+		if allowedPort == "" || allowedPort == gatewayPort {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizeAllowedGateway(raw string) (host string, port string, ok bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", "", false
+	}
+	if !strings.Contains(raw, "://") {
+		raw = "http://" + raw
+	}
+	allowedURL, err := url.Parse(raw)
+	if err != nil || allowedURL.Host == "" {
+		return "", "", false
+	}
+	return strings.ToLower(allowedURL.Hostname()), allowedURL.Port(), true
 }
 
 func (d *DefaultResolver) resolveS3(r *http.Request) (string, func() (string, error), func() (io.ReadCloser, string, error), error) {

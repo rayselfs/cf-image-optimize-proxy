@@ -1,0 +1,70 @@
+suite: config
+templates:
+  - templates/configmap.yaml
+  - templates/secret.yaml
+tests:
+  - it: renders runtime configuration as string env values
+    template: templates/configmap.yaml
+    set:
+      config.cacheS3Bucket: cache-bucket
+      config.imgproxyURL: http://imgproxy.default.svc.cluster.local
+      config.allowedUpstreamGateways:
+        - images.example.com
+        - cdn.example.com
+      config.allowedSourceBuckets:
+        - source-bucket
+      config.defaultQuality: 82
+    asserts:
+      - isKind:
+          of: ConfigMap
+      - equal:
+          path: data.CACHE_S3_BUCKET
+          value: cache-bucket
+      - equal:
+          path: data.CACHE_S3_REGION
+          value: us-east-1
+      - equal:
+          path: data.IMGPROXY_URL
+          value: http://imgproxy.default.svc.cluster.local
+      - equal:
+          path: data.ALLOWED_UPSTREAM_GATEWAYS
+          value: images.example.com,cdn.example.com
+      - equal:
+          path: data.DEFAULT_QUALITY
+          value: "82"
+
+  - it: renders origin verification secrets only when configured
+    template: templates/secret.yaml
+    set:
+      config.cacheS3Bucket: cache-bucket
+      config.imgproxyURL: http://imgproxy.default.svc.cluster.local
+      config.allowedUpstreamGateways:
+        - images.example.com
+      config.allowedSourceBuckets:
+        - source-bucket
+      secrets.originVerify:
+        - new-secret
+        - old-secret
+    asserts:
+      - isKind:
+          of: Secret
+      - equal:
+          path: type
+          value: Opaque
+      - equal:
+          path: stringData.CF_ORIGIN_SECRET
+          value: new-secret,old-secret
+
+  - it: skips managed secret when an existing secret is used
+    template: templates/secret.yaml
+    set:
+      config.cacheS3Bucket: cache-bucket
+      config.imgproxyURL: http://imgproxy.default.svc.cluster.local
+      config.allowedUpstreamGateways:
+        - images.example.com
+      config.allowedSourceBuckets:
+        - source-bucket
+      existingSecret.name: existing-origin-secret
+    asserts:
+      - hasDocuments:
+          count: 0

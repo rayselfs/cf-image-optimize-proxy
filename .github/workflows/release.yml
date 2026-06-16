@@ -80,3 +80,68 @@ jobs:
           platforms: linux/amd64,linux/arm64
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  helm-chart:
+    name: Package Helm Chart
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.17.2
+
+      - name: Resolve chart metadata
+        id: chart
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            version="${GITHUB_REF_NAME#v}"
+            app_version="${version}"
+          else
+            version="0.1.0-main.${GITHUB_RUN_NUMBER}"
+            app_version="latest"
+          fi
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "app_version=${app_version}" >> "${GITHUB_OUTPUT}"
+
+      - name: Helm lint
+        run: |
+          helm lint charts/cf-image-optimize-proxy \
+            --set config.cacheS3Bucket=cache-bucket \
+            --set config.imgproxyURL=http://imgproxy.default.svc.cluster.local \
+            --set 'config.allowedUpstreamGateways[0]=images.example.com' \
+            --set 'config.allowedSourceBuckets[0]=source-bucket'
+
+      - name: Install helm-unittest
+        run: helm plugin install https://github.com/helm-unittest/helm-unittest.git
+
+      - name: Helm unit tests
+        run: helm unittest charts/cf-image-optimize-proxy
+
+      - name: Package chart
+        run: |
+          mkdir -p dist
+          helm package charts/cf-image-optimize-proxy \
+            --version "${{ steps.chart.outputs.version }}" \
+            --app-version "${{ steps.chart.outputs.app_version }}" \
+            --destination dist
+
+      - name: Upload chart package
+        uses: actions/upload-artifact@v4
+        with:
+          name: helm-chart
+          path: dist/*.tgz
+          if-no-files-found: error
+
+      - name: Log in to GHCR for Helm
+        if: startsWith(github.ref, 'refs/tags/')
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io --username "${{ github.actor }}" --password-stdin
+
+      - name: Push chart to GHCR OCI
+        if: startsWith(github.ref, 'refs/tags/')
+        run: helm push dist/*.tgz oci://ghcr.io/${{ github.repository_owner }}/charts

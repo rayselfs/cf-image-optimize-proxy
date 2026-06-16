@@ -1,0 +1,11 @@
+.DS_Store
+.git/
+.gitignore
+.github/
+.idea/
+.vscode/
+*.swp
+*.tmp
+*.bak
+coverage.out
+

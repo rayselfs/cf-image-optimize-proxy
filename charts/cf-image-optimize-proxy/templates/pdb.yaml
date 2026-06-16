@@ -1,0 +1,14 @@
+{{- if .Values.podDisruptionBudget.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "cf-image-optimize-proxy.fullname" . }}
+  labels:
+    {{- include "cf-image-optimize-proxy.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "cf-image-optimize-proxy.selectorLabels" . | nindent 6 }}
+{{- end }}
+

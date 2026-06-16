@@ -1,0 +1,16 @@
+apiVersion: v2
+name: cf-image-optimize-proxy
+description: CloudFront image optimization proxy with S3 caching and external imgproxy transforms
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://github.com/rayselfs/cf-image-optimize-proxy
+sources:
+  - https://github.com/rayselfs/cf-image-optimize-proxy
+keywords:
+  - cloudfront
+  - image-optimization
+  - imgproxy
+  - s3
+maintainers:
+  - name: rayselfs

@@ -238,6 +238,34 @@ func TestResolveGatewayAllowlistAllowed(t *testing.T) {
 	}
 }
 
+func TestResolveGatewayAllowlistAllowsHostOnlyWhenGatewayIncludesPort(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	serverHostPort := strings.TrimPrefix(server.URL, "http://")
+	serverHost := strings.Split(serverHostPort, ":")[0]
+
+	req := httptest.NewRequest(http.MethodGet, "http://assets.example/img/cat.jpg", nil)
+	req.Header.Set("X-Img-Upstream-Gateway", server.URL)
+
+	_, _, _, err := NewResolver(30*time.Second, []string{serverHost}, nil).Resolve(req)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v, want nil for host-only allowlist", err)
+	}
+}
+
+func TestResolveGatewayAllowlistIsCaseInsensitive(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "http://assets.example/img/cat.jpg", nil)
+	req.Header.Set("X-Img-Upstream-Gateway", "http://TRUSTED.EXAMPLE.COM:8080")
+
+	_, _, _, err := NewResolver(30*time.Second, []string{"trusted.example.com"}, nil).Resolve(req)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v, want nil for case-insensitive host allowlist", err)
+	}
+}
+
 func TestResolveGatewayAllowlistBlocked(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "http://assets.example/img/cat.jpg", nil)
 	req.Header.Set("X-Img-Upstream-Gateway", "http://evil.example.com")

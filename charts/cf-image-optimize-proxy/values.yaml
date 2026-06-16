@@ -1,0 +1,135 @@
+replicaCount: 2
+
+image:
+  repository: ghcr.io/rayselfs/cf-image-optimize-proxy
+  pullPolicy: IfNotPresent
+  tag: ""
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  automount: true
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 65532
+
+service:
+  type: ClusterIP
+  port: 80
+  annotations: {}
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts: []
+  tls: []
+
+config:
+  listenAddr: ":8080"
+  containerPort: 8080
+  cacheS3Bucket: ""
+  cacheS3Region: us-east-1
+  imgproxyURL: ""
+  maxWidth: 1920
+  upstreamTimeout: 30
+  imgproxyTimeout: 30
+  shutdownTimeout: 25
+  defaultQuality: 75
+  allowedUpstreamGateways: []
+  allowedSourceBuckets: []
+  otelExporterOtlpEndpoint: ""
+
+secrets:
+  originVerify: []
+
+existingSecret:
+  name: ""
+
+# Render additional Kubernetes manifests with Helm template context.
+# Useful for ExternalSecret resources that create a Secret containing CF_ORIGIN_SECRET,
+# then reference that Secret through existingSecret.name.
+extraManifests: []
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    memory: 512Mi
+
+livenessProbe:
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 10
+  timeoutSeconds: 2
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /ready
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 10
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+startupProbe:
+  enabled: true
+  httpGet:
+    path: /health
+    port: http
+  periodSeconds: 5
+  timeoutSeconds: 2
+  failureThreshold: 12
+
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: null
+
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+
+networkPolicy:
+  enabled: false
+  ingress: []
+  egress: []
+
+serviceMonitor:
+  enabled: false
+  labels: {}
+  interval: 30s
+  scrapeTimeout: 10s
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+topologySpreadConstraints: []

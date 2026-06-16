@@ -1,0 +1,43 @@
+suite: extra manifests
+templates:
+  - templates/extra-manifests.yaml
+tests:
+  - it: renders arbitrary manifests with template context
+    set:
+      extraManifests:
+        - apiVersion: external-secrets.io/v1
+          kind: ExternalSecret
+          metadata:
+            name: '{{ include "cf-image-optimize-proxy.fullname" . }}-origin'
+          spec:
+            refreshInterval: 1h
+            secretStoreRef:
+              kind: ClusterSecretStore
+              name: aws-secrets-manager
+            target:
+              name: image-proxy-origin-secret
+            data:
+              - secretKey: CF_ORIGIN_SECRET
+                remoteRef:
+                  key: cloudfront/origin-secret
+    asserts:
+      - isKind:
+          of: ExternalSecret
+      - equal:
+          path: apiVersion
+          value: external-secrets.io/v1
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-cf-image-optimize-proxy-origin
+      - equal:
+          path: spec.target.name
+          value: image-proxy-origin-secret
+      - equal:
+          path: spec.data[0].secretKey
+          value: CF_ORIGIN_SECRET
+
+  - it: renders nothing by default
+    asserts:
+      - hasDocuments:
+          count: 0
+

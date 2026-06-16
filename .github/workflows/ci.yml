@@ -23,6 +23,24 @@ jobs:
       - name: go test
         run: go test ./... -v -cover -race -coverprofile=coverage.out
 
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.17.2
+
+      - name: Install helm-unittest
+        run: helm plugin install https://github.com/helm-unittest/helm-unittest.git
+
+      - name: Helm lint
+        run: |
+          helm lint charts/cf-image-optimize-proxy \
+            --set config.cacheS3Bucket=cache-bucket \
+            --set config.imgproxyURL=http://imgproxy.default.svc.cluster.local \
+            --set 'config.allowedUpstreamGateways[0]=images.example.com' \
+            --set 'config.allowedSourceBuckets[0]=source-bucket'
+
+      - name: Helm unit tests
+        run: helm unittest charts/cf-image-optimize-proxy
+
       - name: Upload coverage
         uses: actions/upload-artifact@v4
         with:

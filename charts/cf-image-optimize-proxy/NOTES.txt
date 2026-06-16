@@ -1,0 +1,14 @@
+cf-image-optimize-proxy has been installed.
+
+Service:
+  {{ include "cf-image-optimize-proxy.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.service.port }}
+
+Required runtime values:
+  - config.cacheS3Bucket
+  - config.imgproxyURL
+  - config.allowedUpstreamGateways
+  - config.allowedSourceBuckets
+
+For EKS IRSA, set:
+  serviceAccount.annotations.eks\.amazonaws\.com/role-arn=<role-arn>
+

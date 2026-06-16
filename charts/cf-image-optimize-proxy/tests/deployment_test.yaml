@@ -1,0 +1,81 @@
+suite: deployment
+templates:
+  - templates/deployment.yaml
+  - templates/configmap.yaml
+  - templates/secret.yaml
+tests:
+  - it: renders a hardened deployment with required runtime environment
+    set:
+      config.cacheS3Bucket: cache-bucket
+      config.imgproxyURL: http://imgproxy.default.svc.cluster.local
+      config.allowedUpstreamGateways:
+        - images.example.com
+      config.allowedSourceBuckets:
+        - source-bucket
+      image.tag: test-tag
+    template: templates/deployment.yaml
+    asserts:
+      - isKind:
+          of: Deployment
+      - equal:
+          path: spec.replicas
+          value: 2
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/rayselfs/cf-image-optimize-proxy:test-tag
+      - equal:
+          path: spec.template.spec.containers[0].ports[0].containerPort
+          value: 8080
+      - equal:
+          path: spec.template.spec.containers[0].env[0]
+          value:
+            name: LISTEN_ADDR
+            value: ":8080"
+      - contains:
+          path: spec.template.spec.containers[0].envFrom
+          content:
+            configMapRef:
+              name: RELEASE-NAME-cf-image-optimize-proxy
+      - equal:
+          path: spec.template.spec.securityContext.runAsNonRoot
+          value: true
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem
+          value: true
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet.path
+          value: /health
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet.path
+          value: /ready
+
+  - it: omits replicas when autoscaling is enabled
+    set:
+      autoscaling.enabled: true
+      config.cacheS3Bucket: cache-bucket
+      config.imgproxyURL: http://imgproxy.default.svc.cluster.local
+      config.allowedUpstreamGateways:
+        - images.example.com
+      config.allowedSourceBuckets:
+        - source-bucket
+    template: templates/deployment.yaml
+    asserts:
+      - notExists:
+          path: spec.replicas
+
+  - it: references an externally managed origin verification secret
+    set:
+      config.cacheS3Bucket: cache-bucket
+      config.imgproxyURL: http://imgproxy.default.svc.cluster.local
+      config.allowedUpstreamGateways:
+        - images.example.com
+      config.allowedSourceBuckets:
+        - source-bucket
+      existingSecret.name: image-proxy-origin-secret
+    template: templates/deployment.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].envFrom
+          content:
+            secretRef:
+              name: image-proxy-origin-secret

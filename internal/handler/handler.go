@@ -160,6 +160,8 @@ func cacheKeyHash(key string) string {
 // passThrough streams the request to the upstream without transformation.
 // Used when no image transform params (imwidth/f/q) are present.
 func (h *Handler) passThrough(w http.ResponseWriter, r *http.Request) {
+	clearWriteDeadline(w)
+
 	_, _, fetchFunc, err := h.Resolver.Resolve(r)
 	if err != nil {
 		slog.Error("handler: resolve pass-through", "error", err)
@@ -198,11 +200,7 @@ func (h *Handler) passThrough(w http.ResponseWriter, r *http.Request) {
 // The server WriteTimeout is cleared so arbitrarily large files (e.g. 10 GB video) are
 // not interrupted mid-transfer.
 func (h *Handler) streamBypass(w http.ResponseWriter, r *http.Request, fetchFunc func() (io.ReadCloser, string, error), headContentType string) {
-	// Clear the per-response write deadline; the global WriteTimeout would otherwise
-	// cut off large file transfers (e.g. video) after 60 s.
-	if rc := http.NewResponseController(w); rc != nil {
-		_ = rc.SetWriteDeadline(time.Time{})
-	}
+	clearWriteDeadline(w)
 
 	body, contentType, err := fetchFunc()
 	if err != nil {
@@ -231,6 +229,14 @@ func (h *Handler) streamBypass(w http.ResponseWriter, r *http.Request, fetchFunc
 	defer copyBufPool.Put(bufPtr)
 	if _, err := io.CopyBuffer(w, body, *bufPtr); err != nil {
 		slog.Error("handler: stream bypass write", "error", err, "path", r.URL.Path)
+	}
+}
+
+func clearWriteDeadline(w http.ResponseWriter) {
+	// Clear the per-response write deadline; the global WriteTimeout would otherwise
+	// cut off large pass-through transfers after 60 s.
+	if rc := http.NewResponseController(w); rc != nil {
+		_ = rc.SetWriteDeadline(time.Time{})
 	}
 }
 

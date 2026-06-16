@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"testing"
+	"time"
 
 	"github.com/rayselfs/cf-image-optimize-proxy/internal/cache"
 	"github.com/rayselfs/cf-image-optimize-proxy/internal/imgproxy"
@@ -121,6 +122,18 @@ func (m *mockCoalescer) Do(ctx context.Context, key string, fn func() (interface
 	m.key = key
 	result, err := fn()
 	return result, err, false
+}
+
+type deadlineRecorder struct {
+	*httptest.ResponseRecorder
+	setWriteDeadlineCalled bool
+	writeDeadline          time.Time
+}
+
+func (w *deadlineRecorder) SetWriteDeadline(deadline time.Time) error {
+	w.setWriteDeadlineCalled = true
+	w.writeDeadline = deadline
+	return nil
 }
 
 func TestParseParams(t *testing.T) {
@@ -499,6 +512,29 @@ func TestPassThroughOverLimit(t *testing.T) {
 	}
 	if got := w.Body.String(); got != "original body" {
 		t.Fatalf("body = %q, want %q", got, "original body")
+	}
+}
+
+func TestPassThroughClearsWriteDeadline(t *testing.T) {
+	c := &mockCache{}
+	tx := &mockTransformer{}
+	r := &mockResolver{body: []byte("original body"), contentType: "image/png"}
+	coal := &mockCoalescer{}
+	h := New(c, tx, r, coal, 1920, 75)
+
+	req := httptest.NewRequest(http.MethodGet, "https://example.com/image.png", nil)
+	w := &deadlineRecorder{ResponseRecorder: httptest.NewRecorder()}
+
+	h.ServeHTTP(w, req)
+
+	if !w.setWriteDeadlineCalled {
+		t.Fatal("SetWriteDeadline was not called")
+	}
+	if !w.writeDeadline.IsZero() {
+		t.Fatalf("write deadline = %v, want zero time", w.writeDeadline)
+	}
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
 	}
 }
 
